@@ -377,8 +377,9 @@ simplNonRecX :: SimplEnv
 
 simplNonRecX env bndr new_rhs
   | isDeadBinder bndr   -- Not uncommon; e.g. case (a,b) of c { (p,q) -> p }
-  = return env          --               Here c is dead, and we avoid creating
-                        --               the binding c = (a,b)
+  = do 		 	-- Here c is dead, and we avoid creating
+       checkedTick (DeadBindingElim bndr)
+       return env       -- the binding c = (a,b)
   | Coercion co <- new_rhs
   = return (extendCvSubst env bndr co)
   | otherwise           --               the binding b = (a,b)
@@ -908,6 +909,7 @@ simplExprF env e cont
       {- , ppr (seFloats env) -}
       ]) $ -}
     simplExprF1 env e cont
+
 
 simplExprF1 :: SimplEnv -> InExpr -> SimplCont
             -> SimplM (SimplEnv, OutExpr)

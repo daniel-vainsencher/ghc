@@ -611,6 +611,7 @@ data Tick
   | CaseElim			Id	-- Case binder
   | CaseIdentity		Id	-- Case binder
   | FillInCaseDefault		Id	-- Case binder
+  | DeadBindingElim		Id
 
   | BottomFound		
   | SimplifierDone		-- Ticked at each iteration of the simplifier
@@ -644,6 +645,7 @@ tickToTag (FillInCaseDefault _)		= 13
 tickToTag BottomFound			= 14
 tickToTag SimplifierDone		= 16
 tickToTag (AltMerge _)			= 17
+tickToTag (DeadBindingElim _)		= 18
 
 tickString :: Tick -> String
 tickString (PreInlineUnconditionally _)	= "PreInlineUnconditionally"
@@ -663,6 +665,7 @@ tickString (CaseIdentity _)		= "CaseIdentity"
 tickString (FillInCaseDefault _)	= "FillInCaseDefault"
 tickString BottomFound			= "BottomFound"
 tickString SimplifierDone		= "SimplifierDone"
+tickString (DeadBindingElim _) 		= "DeadBindingElim"
 
 pprTickCts :: Tick -> SDoc
 pprTickCts (PreInlineUnconditionally v)	= ppr v
