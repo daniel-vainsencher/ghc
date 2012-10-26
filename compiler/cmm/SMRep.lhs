@@ -5,9 +5,6 @@
 
 Storage manager representation of closures
 
-This is here, rather than in ClosureInfo, just to keep nhc happy.
-Other modules should access this info through ClosureInfo.
-
 \begin{code}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
@@ -30,6 +27,7 @@ module SMRep (
 
         -- ** Predicates
         isStaticRep, isConRep, isThunkRep, isFunRep, isStaticNoCafCon,
+        isStackRep,
 
         -- ** Size-related things
         heapClosureSize,
@@ -148,7 +146,7 @@ data SMRep
         Liveness
 
   | RTSRep              -- The RTS needs to declare info tables with specific
-        StgHalfWord     -- type tags, so this form lets us override the default
+        Int             -- type tags, so this form lets us override the default
         SMRep           -- tag for an SMRep.
 
 -- | True <=> This is a static closure.  Affects how we garbage-collect it.
@@ -166,10 +164,10 @@ data ClosureTypeInfo
   | ThunkSelector SelectorOffset
   | BlackHole
 
-type ConstrTag         = StgHalfWord
+type ConstrTag         = Int
 type ConstrDescription = [Word8] -- result of dataConIdentity
-type FunArity          = StgHalfWord
-type SelectorOffset    = StgWord
+type FunArity          = Int
+type SelectorOffset    = Int
 
 -------------------------
 -- We represent liveness bitmaps as a Bitmap (whose internal
@@ -188,7 +186,7 @@ type Liveness = [Bool]   -- One Bool per word; True  <=> non-ptr or dead
 
 data ArgDescr
   = ArgSpec             -- Fits one of the standard patterns
-        !StgHalfWord    -- RTS type identifier ARG_P, ARG_N, ...
+        !Int            -- RTS type identifier ARG_P, ARG_N, ...
 
   | ArgGen              -- General case
         Liveness        -- Details about the arguments
@@ -212,7 +210,7 @@ mkHeapRep dflags is_static ptr_wds nonptr_wds cl_type_info
      hdr_size     = closureTypeHdrSize dflags cl_type_info
      payload_size = ptr_wds + nonptr_wds
 
-mkRTSRep :: StgHalfWord -> SMRep -> SMRep
+mkRTSRep :: Int -> SMRep -> SMRep
 mkRTSRep = RTSRep
 
 mkStackRep :: [Bool] -> SMRep
@@ -228,6 +226,11 @@ isStaticRep :: SMRep -> IsStatic
 isStaticRep (HeapRep is_static _ _ _) = is_static
 isStaticRep (StackRep {})             = False
 isStaticRep (RTSRep _ rep)            = isStaticRep rep
+
+isStackRep :: SMRep -> Bool
+isStackRep StackRep{}     = True
+isStackRep (RTSRep _ rep) = isStackRep rep
+isStackRep _              = False
 
 isConRep :: SMRep -> Bool
 isConRep (HeapRep _ _ _ Constr{}) = True
@@ -261,7 +264,7 @@ fixedHdrSize dflags = sTD_HDR_SIZE dflags + profHdrSize dflags
 -- (StgProfHeader in includes/rts/storage/Closures.h)
 profHdrSize  :: DynFlags -> WordOff
 profHdrSize dflags
- | dopt Opt_SccProfilingOn dflags = pROF_HDR_SIZE dflags
+ | gopt Opt_SccProfilingOn dflags = pROF_HDR_SIZE dflags
  | otherwise                      = 0
 
 -- | The garbage collector requires that every closure is at least as
@@ -314,11 +317,10 @@ closureTypeHdrSize dflags ty = case ty of
 -- Defines CONSTR, CONSTR_1_0 etc
 
 -- | Derives the RTS closure type from an 'SMRep'
-rtsClosureType :: DynFlags -> SMRep -> StgHalfWord
-rtsClosureType dflags rep
-    = toStgHalfWord dflags
-    $ case rep of
-      RTSRep ty _ -> fromStgHalfWord ty
+rtsClosureType :: SMRep -> Int
+rtsClosureType rep
+    = case rep of
+      RTSRep ty _ -> ty
 
       HeapRep False 1 0 Constr{} -> CONSTR_1_0
       HeapRep False 0 1 Constr{} -> CONSTR_0_1
@@ -355,11 +357,11 @@ rtsClosureType dflags rep
       _ -> panic "rtsClosureType"
 
 -- We export these ones
-rET_SMALL, rET_BIG, aRG_GEN, aRG_GEN_BIG :: DynFlags -> StgHalfWord
-rET_SMALL   dflags = toStgHalfWord dflags RET_SMALL
-rET_BIG     dflags = toStgHalfWord dflags RET_BIG
-aRG_GEN     dflags = toStgHalfWord dflags ARG_GEN
-aRG_GEN_BIG dflags = toStgHalfWord dflags ARG_GEN_BIG
+rET_SMALL, rET_BIG, aRG_GEN, aRG_GEN_BIG :: Int
+rET_SMALL   = RET_SMALL
+rET_BIG     = RET_BIG
+aRG_GEN     = ARG_GEN
+aRG_GEN_BIG = ARG_GEN_BIG
 \end{code}
 
 Note [Static NoCaf constructors]

@@ -181,11 +181,11 @@ because they don't support cross package data references well.
 
 buildDynCon' dflags platform binder _cc con [arg]
   | maybeIntLikeCon con
-  , platformOS platform /= OSMinGW32 || not (dopt Opt_PIC dflags)
+  , platformOS platform /= OSMinGW32 || not (gopt Opt_PIC dflags)
   , StgLitArg (MachInt val) <- arg
   , val <= fromIntegral (mAX_INTLIKE dflags) -- Comparisons at type Integer!
   , val >= fromIntegral (mIN_INTLIKE dflags) -- ...ditto...
-  = do  { let intlike_lbl   = mkCmmGcPtrLabel rtsPackageId (fsLit "stg_INTLIKE_closure")
+  = do  { let intlike_lbl   = mkCmmClosureLabel rtsPackageId (fsLit "stg_INTLIKE")
               val_int = fromIntegral val :: Int
               offsetW = (val_int - mIN_INTLIKE dflags) * (fixedHdrSize dflags + 1)
                 -- INTLIKE closures consist of a header and one word payload
@@ -195,12 +195,12 @@ buildDynCon' dflags platform binder _cc con [arg]
 
 buildDynCon' dflags platform binder _cc con [arg]
   | maybeCharLikeCon con
-  , platformOS platform /= OSMinGW32 || not (dopt Opt_PIC dflags)
+  , platformOS platform /= OSMinGW32 || not (gopt Opt_PIC dflags)
   , StgLitArg (MachChar val) <- arg
   , let val_int = ord val :: Int
   , val_int <= mAX_CHARLIKE dflags
   , val_int >= mIN_CHARLIKE dflags
-  = do  { let charlike_lbl   = mkCmmGcPtrLabel rtsPackageId (fsLit "stg_CHARLIKE_closure")
+  = do  { let charlike_lbl   = mkCmmClosureLabel rtsPackageId (fsLit "stg_CHARLIKE")
               offsetW = (val_int - mIN_CHARLIKE dflags) * (fixedHdrSize dflags + 1)
                 -- CHARLIKE closures consist of a header and one word payload
               charlike_amode = cmmLabelOffW dflags charlike_lbl offsetW

@@ -37,6 +37,8 @@ module HscTypes (
 
         PackageInstEnv, PackageRuleBase,
 
+        mkSOName, soExt,
+
         -- * Annotations
         prepareAnnotations,
 
@@ -157,6 +159,7 @@ import Fingerprint
 import MonadUtils
 import Bag
 import ErrUtils
+import Platform
 import Util
 
 import Control.Monad    ( mplus, guard, liftM, when )
@@ -232,7 +235,7 @@ instance Exception GhcApiError
 -- -Werror is enabled, or print them out otherwise.
 printOrThrowWarnings :: DynFlags -> Bag WarnMsg -> IO ()
 printOrThrowWarnings dflags warns
-  | dopt Opt_WarnIsError dflags
+  | gopt Opt_WarnIsError dflags
   = when (not (isEmptyBag warns)) $ do
       throwIO $ mkSrcErr $ warns `snocBag` warnIsErrorMsg dflags
   | otherwise
@@ -1777,6 +1780,22 @@ data NameCache
 type OrigNameCache   = ModuleEnv (OccEnv Name)
 \end{code}
 
+
+\begin{code}
+mkSOName :: Platform -> FilePath -> FilePath
+mkSOName platform root
+    = case platformOS platform of
+      OSDarwin  -> ("lib" ++ root) <.> "dylib"
+      OSMinGW32 ->           root  <.> "dll"
+      _         -> ("lib" ++ root) <.> "so"
+
+soExt :: Platform -> FilePath
+soExt platform
+    = case platformOS platform of
+      OSDarwin  -> "dylib"
+      OSMinGW32 -> "dll"
+      _         -> "so"
+\end{code}
 
 
 %************************************************************************

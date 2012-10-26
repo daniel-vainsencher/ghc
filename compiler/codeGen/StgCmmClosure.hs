@@ -353,16 +353,16 @@ isLFReEntrant _                = False
 --		Choosing SM reps
 -----------------------------------------------------------------------------
 
-lfClosureType :: DynFlags -> LambdaFormInfo -> ClosureTypeInfo
-lfClosureType dflags (LFReEntrant _ arity _ argd) = Fun (toStgHalfWord dflags (toInteger arity)) argd
-lfClosureType dflags (LFCon con)                  = Constr (toStgHalfWord dflags (toInteger (dataConTagZ con)))
-                                                           (dataConIdentity con)
-lfClosureType dflags (LFThunk _ _ _ is_sel _)     = thunkClosureType dflags is_sel
-lfClosureType _      _                            = panic "lfClosureType"
+lfClosureType :: LambdaFormInfo -> ClosureTypeInfo
+lfClosureType (LFReEntrant _ arity _ argd) = Fun arity argd
+lfClosureType (LFCon con)                  = Constr (dataConTagZ con)
+                                                    (dataConIdentity con)
+lfClosureType (LFThunk _ _ _ is_sel _)     = thunkClosureType is_sel
+lfClosureType _                            = panic "lfClosureType"
 
-thunkClosureType :: DynFlags -> StandardFormInfo -> ClosureTypeInfo
-thunkClosureType dflags (SelectorThunk off) = ThunkSelector (toStgWord dflags (toInteger off))
-thunkClosureType _      _                   = Thunk
+thunkClosureType :: StandardFormInfo -> ClosureTypeInfo
+thunkClosureType (SelectorThunk off) = ThunkSelector off
+thunkClosureType _                   = Thunk
 
 -- We *do* get non-updatable top-level thunks sometimes.  eg. f = g
 -- gets compiled to a jump to g (if g has non-zero arity), instead of
@@ -372,8 +372,6 @@ thunkClosureType _      _                   = Thunk
 -----------------------------------------------------------------------------
 --		nodeMustPointToIt
 -----------------------------------------------------------------------------
-
--- Be sure to see the stg-details notes about these...
 
 nodeMustPointToIt :: DynFlags -> LambdaFormInfo -> Bool
 nodeMustPointToIt _ (LFReEntrant top _ no_fvs _)
@@ -402,7 +400,7 @@ nodeMustPointToIt _ (LFCon _) = True
 	-- 27/11/92.
 
 nodeMustPointToIt dflags (LFThunk _ no_fvs updatable NonStandardThunk _)
-  = updatable || not no_fvs || dopt Opt_SccProfilingOn dflags
+  = updatable || not no_fvs || gopt Opt_SccProfilingOn dflags
 	  -- For the non-updatable (single-entry case):
 	  --
 	  -- True if has fvs (in which case we need access to them, and we
@@ -474,7 +472,7 @@ getCallMethod :: DynFlags
 	      -> CallMethod
 
 getCallMethod dflags _name _ lf_info _n_args
-  | nodeMustPointToIt dflags lf_info && dopt Opt_Parallel dflags
+  | nodeMustPointToIt dflags lf_info && gopt Opt_Parallel dflags
   =	-- If we're parallel, then we must always enter via node.  
 	-- The reason is that the closure may have been 	
 	-- fetched since we allocated it.
@@ -498,7 +496,7 @@ getCallMethod dflags name caf (LFThunk _ _ updatable std_form_info is_fun) n_arg
 		-- is the fast-entry code]
 
   -- Since is_fun is False, we are *definitely* looking at a data value
-  | updatable || dopt Opt_Ticky dflags -- to catch double entry
+  | updatable || gopt Opt_Ticky dflags -- to catch double entry
       {- OLD: || opt_SMP
 	 I decided to remove this, because in SMP mode it doesn't matter
 	 if we enter the same thunk multiple times, so the optimisation
@@ -687,7 +685,7 @@ mkClosureInfo dflags is_static id lf_info tot_wds ptr_wds val_descr
                   closureProf      = prof }     -- (we don't have an SRT yet)
   where
     name       = idName id
-    sm_rep     = mkHeapRep dflags is_static ptr_wds nonptr_wds (lfClosureType dflags lf_info)
+    sm_rep     = mkHeapRep dflags is_static ptr_wds nonptr_wds (lfClosureType lf_info)
     prof       = mkProfilingInfo dflags id val_descr
     nonptr_wds = tot_wds - ptr_wds
 
@@ -854,7 +852,7 @@ enterIdLabel dflags id c
 
 mkProfilingInfo :: DynFlags -> Id -> String -> ProfilingInfo
 mkProfilingInfo dflags id val_descr
-  | not (dopt Opt_SccProfilingOn dflags) = NoProfilingInfo
+  | not (gopt Opt_SccProfilingOn dflags) = NoProfilingInfo
   | otherwise = ProfilingInfo ty_descr_w8 val_descr_w8
   where
     ty_descr_w8  = stringToWord8s (getTyDescription (idType id))
@@ -899,10 +897,9 @@ mkDataConInfoTable dflags data_con is_static ptr_wds nonptr_wds
 
    sm_rep = mkHeapRep dflags is_static ptr_wds nonptr_wds cl_type
 
-   cl_type = Constr (toStgHalfWord dflags (toInteger (dataConTagZ data_con)))
-                    (dataConIdentity data_con)
+   cl_type = Constr (dataConTagZ data_con) (dataConIdentity data_con)
 
-   prof | not (dopt Opt_SccProfilingOn dflags) = NoProfilingInfo
+   prof | not (gopt Opt_SccProfilingOn dflags) = NoProfilingInfo
         | otherwise                            = ProfilingInfo ty_descr val_descr
 
    ty_descr  = stringToWord8s $ occNameString $ getOccName $ dataConTyCon data_con

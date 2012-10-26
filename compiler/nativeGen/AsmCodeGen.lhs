@@ -287,7 +287,7 @@ nativeCodeGen' dflags ncgImpl h us cmms
         return  ()
 
  where  add_split tops
-                | dopt Opt_SplitObjs dflags = split_marker : tops
+                | gopt Opt_SplitObjs dflags = split_marker : tops
                 | otherwise                 = tops
 
         split_marker = CmmProc mapEmpty mkSplitMarkerLabel (ListGraph [])
@@ -432,8 +432,8 @@ cmmNativeGen dflags ncgImpl us cmm count
 
         -- allocate registers
         (alloced, usAlloc, ppr_raStatsColor, ppr_raStatsLinear) <-
-         if ( dopt Opt_RegsGraph dflags
-           || dopt Opt_RegsIterative dflags)
+         if ( gopt Opt_RegsGraph dflags
+           || gopt Opt_RegsIterative dflags)
           then do
                 -- the regs usable for allocation
                 let (alloc_regs :: UniqFM (UniqSet RealReg))
@@ -971,12 +971,13 @@ cmmStmtConFold stmt
 cmmExprConFold :: ReferenceKind -> CmmExpr -> CmmOptM CmmExpr
 cmmExprConFold referenceKind expr = do
     dflags <- getDynFlags
-    -- Skip constant folding if new code generator is running
-    -- (this optimization is done in Hoopl)
-    -- SDM: re-enabled for now, while cmmRewriteAssignments is turned off
-    let expr' = if False -- dopt Opt_TryNewCodeGen dflags
+
+    -- With -O1 and greater, the cmmSink pass does constant-folding, so
+    -- we don't need to do it again here.
+    let expr' = if optLevel dflags >= 1
                     then expr
                     else cmmExprCon dflags expr
+
     cmmExprNative referenceKind expr'
 
 cmmExprCon :: DynFlags -> CmmExpr -> CmmExpr
@@ -1023,15 +1024,15 @@ cmmExprNative referenceKind expr = do
         -- to use the register table, so we replace these registers
         -- with the corresponding labels:
         CmmReg (CmmGlobal EagerBlackholeInfo)
-          | arch == ArchPPC && not (dopt Opt_PIC dflags)
+          | arch == ArchPPC && not (gopt Opt_PIC dflags)
           -> cmmExprNative referenceKind $
              CmmLit (CmmLabel (mkCmmCodeLabel rtsPackageId (fsLit "__stg_EAGER_BLACKHOLE_info")))
         CmmReg (CmmGlobal GCEnter1)
-          | arch == ArchPPC && not (dopt Opt_PIC dflags)
+          | arch == ArchPPC && not (gopt Opt_PIC dflags)
           -> cmmExprNative referenceKind $
              CmmLit (CmmLabel (mkCmmCodeLabel rtsPackageId (fsLit "__stg_gc_enter_1")))
         CmmReg (CmmGlobal GCFun)
-          | arch == ArchPPC && not (dopt Opt_PIC dflags)
+          | arch == ArchPPC && not (gopt Opt_PIC dflags)
           -> cmmExprNative referenceKind $
              CmmLit (CmmLabel (mkCmmCodeLabel rtsPackageId (fsLit "__stg_gc_fun")))
 

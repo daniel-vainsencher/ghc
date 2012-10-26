@@ -61,7 +61,7 @@ pprCs dflags cmms
  = pprCode CStyle (vcat $ map (\c -> split_marker $$ pprC c) cmms)
  where
    split_marker
-     | dopt Opt_SplitObjs dflags = ptext (sLit "__STG_SPLIT_MARKER")
+     | gopt Opt_SplitObjs dflags = ptext (sLit "__STG_SPLIT_MARKER")
      | otherwise                 = empty
 
 writeCs :: DynFlags -> Handle -> [RawCmmGroup] -> IO ()
@@ -865,7 +865,6 @@ is_cishCC :: CCallConv -> Bool
 is_cishCC CCallConv    = True
 is_cishCC CApiConv     = True
 is_cishCC StdCallConv  = True
-is_cishCC CmmCallConv  = False
 is_cishCC PrimCallConv = False
 
 -- ---------------------------------------------------------------------

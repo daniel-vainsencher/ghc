@@ -208,25 +208,6 @@ Library
         CodeGen.Platform.SPARC
         CodeGen.Platform.X86
         CodeGen.Platform.X86_64
-        CgBindery
-        CgCallConv
-        CgCase
-        CgClosure
-        CgCon
-        CgExpr
-        CgExtCode
-        CgForeignCall
-        CgHeapery
-        CgHpc
-        CgInfoTbls
-        CgLetNoEscape
-        CgMonad
-        CgParallel
-        CgPrimOp
-        CgProf
-        CgStackery
-        CgTailCall
-        CgTicky
         CgUtils
         StgCmm
         StgCmmBind
@@ -244,7 +225,7 @@ Library
         StgCmmProf
         StgCmmTicky
         StgCmmUtils
-        ClosureInfo
+        StgCmmExtCode
         SMRep
         CoreArity
         CoreFVs
@@ -481,6 +462,9 @@ Library
         Vectorise
         Hoopl.Dataflow
         Hoopl
+
+--        CgInfoTbls used in ghci/DebuggerUtils
+--        CgHeapery  mkVirtHeapOffsets used in ghci
 
     Exposed-Modules:
             AsmCodeGen

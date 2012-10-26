@@ -332,8 +332,8 @@ tickyAllocHeap hp
 
 ifTicky :: FCode () -> FCode ()
 ifTicky code = do dflags <- getDynFlags
-                  if dopt Opt_Ticky dflags then code
-                                           else nopC
+                  if gopt Opt_Ticky dflags then code
+                                           else return ()
 
 -- All the ticky-ticky counters are declared "unsigned long" in C
 bumpTickyCounter :: FastString -> FCode ()

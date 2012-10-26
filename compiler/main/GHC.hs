@@ -22,7 +22,7 @@ module GHC (
         needsTemplateHaskell,
 
         -- * Flags and settings
-        DynFlags(..), DynFlag(..), Severity(..), HscTarget(..), dopt,
+        DynFlags(..), GeneralFlag(..), Severity(..), HscTarget(..), gopt,
         GhcMode(..), GhcLink(..), defaultObjectTarget,
         parseDynamicFlags,
         getSessionDynFlags, setSessionDynFlags,
@@ -524,7 +524,7 @@ getInteractiveDynFlags :: GhcMonad m => m DynFlags
 getInteractiveDynFlags = withSession $ \h -> return (ic_dflags (hsc_IC h))
 
 
-parseDynamicFlags :: Monad m =>
+parseDynamicFlags :: MonadIO m =>
                      DynFlags -> [Located String]
                   -> m (DynFlags, [Located String], [Located String])
 parseDynamicFlags = parseDynamicFlagsCmdLine
@@ -1260,7 +1260,7 @@ showRichTokenStream ts = go startLoc ts ""
                                        . (str ++)
                                        . go tokEnd ts
                  | otherwise -> ((replicate (tokLine - locLine) '\n') ++)
-                              . ((replicate tokCol ' ') ++)
+                               . ((replicate (tokCol - 1) ' ') ++)
                               . (str ++)
                               . go tokEnd ts
                   where (locLine, locCol) = (srcLocLine loc, srcLocCol loc)

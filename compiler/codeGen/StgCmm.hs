@@ -245,7 +245,7 @@ cgDataCon data_con
             arg_reps = [(typePrimRep rep_ty, rep_ty) | ty <- dataConRepArgTys data_con, rep_ty <- flattenRepType (repType ty)]
 
             -- Dynamic closure code for non-nullary constructors only
-        ; whenC (not (isNullaryRepDataCon data_con))
+        ; when (not (isNullaryRepDataCon data_con))
                 (emit_info dyn_info_tbl tickyEnterDynCon)
 
                 -- Dynamic-Closure first, to reduce forward references
@@ -262,7 +262,7 @@ cgDataCon data_con
 
 maybeExternaliseId :: DynFlags -> Id -> FCode Id
 maybeExternaliseId dflags id
-  | dopt Opt_SplitObjs dflags,  -- Externalise the name for -split-objs
+  | gopt Opt_SplitObjs dflags,  -- Externalise the name for -split-objs
     isInternalName name = do { mod <- getModuleName
                              ; returnFC (setIdName id (externalise mod)) }
   | otherwise           = returnFC id
