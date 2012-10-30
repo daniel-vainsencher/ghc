@@ -494,7 +494,7 @@ simplifyExpr dflags expr
 
 	; let sz = exprSize expr
 
-        ; (expr', counts) <- initSmpl dflags emptyRuleBase emptyFamInstEnvs us sz $
+        ; (expr', counts) <- initSmpl dflags emptyRuleBase emptyFamInstEnvs us Nothing sz $
 				 simplExprGently (simplEnvForGHCi dflags) expr
 
         ; Err.dumpIfSet dflags (dopt Opt_D_dump_simpl_stats dflags)
@@ -630,7 +630,7 @@ simplifyPgmIO pass@(CoreDoSimplify max_iterations mode)
                 ; fam_envs = (eps_fam_inst_env eps, fam_inst_env) } ;
 
                 -- Simplify the program
-           (env1, counts1) <- initSmpl dflags rule_base2 fam_envs us1 sz simpl_binds ;
+           (env1, counts1) <- initSmpl dflags rule_base2 fam_envs us1 Nothing sz simpl_binds ;
 
            let  { binds1 = getFloatBinds env1
                 ; rules1 = substRulesForImportedIds (mkCoreSubst (text "imp-rules") env1) rules

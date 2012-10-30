@@ -41,12 +41,15 @@ For the simplifier monad, we want to {\em thread} a unique supply and a counter.
 (Command-line switches move around through the explicitly-passed SimplEnv.)
 
 \begin{code}
+newtype SearchTapeElement = TE Bool
+type MTape = Maybe [SearchTapeElement]
 newtype SimplM result
   =  SM  { unSM :: SimplTopEnv  -- Envt that does not change much
                 -> UniqSupply   -- We thread the unique supply because
                                 -- constantly splitting it is rather expensive
+                -> MTape
                 -> SimplCount
-                -> IO (result, UniqSupply, SimplCount)}
+                -> IO (result, UniqSupply, MTape, SimplCount)}
   -- we only need IO here for dump output
 
 data SimplTopEnv
@@ -60,13 +63,14 @@ data SimplTopEnv
 \begin{code}
 initSmpl :: DynFlags -> RuleBase -> (FamInstEnv, FamInstEnv)
          -> UniqSupply          -- No init count; set to 0
+         -> MTape
          -> Int                 -- Size of the bindings, used to limit
                                 -- the number of ticks we allow
          -> SimplM a
          -> IO (a, SimplCount)
 
-initSmpl dflags rules fam_envs us size m
-  = do (result, _, count) <- unSM m env us (zeroSimplCount dflags)
+initSmpl dflags rules fam_envs us tape size m
+  = do (result, _, _, count) <- unSM m env us tape (zeroSimplCount dflags)
        return (result, count)
   where
     env = STE { st_flags = dflags, st_rules = rules
@@ -102,20 +106,20 @@ instance Monad SimplM where
    return = returnSmpl
 
 returnSmpl :: a -> SimplM a
-returnSmpl e = SM (\_st_env us sc -> return (e, us, sc))
+returnSmpl e = SM (\_st_env us tape sc -> return (e, us, tape, sc))
 
 thenSmpl  :: SimplM a -> (a -> SimplM b) -> SimplM b
 thenSmpl_ :: SimplM a -> SimplM b -> SimplM b
 
 thenSmpl m k
-  = SM $ \st_env us0 sc0 -> do
-      (m_result, us1, sc1) <- unSM m st_env us0 sc0
-      unSM (k m_result) st_env us1 sc1
+  = SM $ \st_env us0 tape0 sc0 -> do
+      (m_result, us1, tape1, sc1) <- unSM m st_env us0 tape0 sc0
+      unSM (k m_result) st_env us1 tape1 sc1
 
 thenSmpl_ m k
-  = SM $ \st_env us0 sc0 -> do
-      (_, us1, sc1) <- unSM m st_env us0 sc0
-      unSM k st_env us1 sc1
+  = SM $ \st_env us0 tape0 sc0 -> do
+      (_, us1, tape1, sc1) <- unSM m st_env us0 tape0 sc0
+      unSM k st_env us1 tape1 sc1
 
 -- TODO: this specializing is not allowed
 -- {-# SPECIALIZE mapM         :: (a -> SimplM b) -> [a] -> SimplM [b] #-}
@@ -133,30 +137,30 @@ thenSmpl_ m k
 \begin{code}
 instance MonadUnique SimplM where
     getUniqueSupplyM
-       = SM (\_st_env us sc -> case splitUniqSupply us of
-                                (us1, us2) -> return (us1, us2, sc))
+       = SM (\_st_env us tape sc -> case splitUniqSupply us of
+                                (us1, us2) -> return (us1, us2, tape, sc))
 
     getUniqueM
-       = SM (\_st_env us sc -> case splitUniqSupply us of
-                                (us1, us2) -> return (uniqFromSupply us1, us2, sc))
+       = SM (\_st_env us tape sc -> case splitUniqSupply us of
+                                (us1, us2) -> return (uniqFromSupply us1, us2, tape, sc))
 
     getUniquesM
-        = SM (\_st_env us sc -> case splitUniqSupply us of
-                                (us1, us2) -> return (uniqsFromSupply us1, us2, sc))
+        = SM (\_st_env us tape sc -> case splitUniqSupply us of
+                                (us1, us2) -> return (uniqsFromSupply us1, us2, tape, sc))
 
 instance HasDynFlags SimplM where
-    getDynFlags = SM (\st_env us sc -> return (st_flags st_env, us, sc))
+    getDynFlags = SM (\st_env us tape sc -> return (st_flags st_env, us, tape, sc))
 
 instance MonadIO SimplM where
-    liftIO m = SM $ \_ us sc -> do
+    liftIO m = SM $ \_ us tape sc -> do
       x <- m
-      return (x, us, sc)
+      return (x, us, tape, sc)
 
 getSimplRules :: SimplM RuleBase
-getSimplRules = SM (\st_env us sc -> return (st_rules st_env, us, sc))
+getSimplRules = SM (\st_env us tape sc -> return (st_rules st_env, us, tape, sc))
 
 getFamEnvs :: SimplM (FamInstEnv, FamInstEnv)
-getFamEnvs = SM (\st_env us sc -> return (st_fams st_env, us, sc))
+getFamEnvs = SM (\st_env us tape sc -> return (st_fams st_env, us, tape, sc))
 
 newId :: FastString -> Type -> SimplM Id
 newId fs ty = do uniq <- getUniqueM
@@ -172,19 +176,19 @@ newId fs ty = do uniq <- getUniqueM
 
 \begin{code}
 getSimplCount :: SimplM SimplCount
-getSimplCount = SM (\_st_env us sc -> return (sc, us, sc))
+getSimplCount = SM (\_st_env us tape sc -> return (sc, us, tape, sc))
 
 tick :: Tick -> SimplM ()
-tick t = SM (\st_env us sc -> let sc' = doSimplTick (st_flags st_env) t sc
-                              in sc' `seq` return ((), us, sc'))
+tick t = SM (\st_env us tape sc -> let sc' = doSimplTick (st_flags st_env) t sc
+                              in sc' `seq` return ((), us, tape, sc'))
 
 checkedTick :: Tick -> SimplM ()
 -- Try to take a tick, but fail if too many
 checkedTick t
-  = SM (\st_env us sc -> if st_max_ticks st_env <= simplCountN sc
+  = SM (\st_env us tape sc -> if st_max_ticks st_env <= simplCountN sc
                          then pprPanic "Simplifier ticks exhausted" (msg sc)
                          else let sc' = doSimplTick (st_flags st_env) t sc
-                              in sc' `seq` return ((), us, sc'))
+                              in sc' `seq` return ((), us, tape, sc'))
   where
     msg sc = vcat [ ptext (sLit "When trying") <+> ppr t
                   , ptext (sLit "To increase the limit, use -fsimpl-tick-factor=N (default 100)")
@@ -200,6 +204,6 @@ freeTick :: Tick -> SimplM ()
 -- Record a tick, but don't add to the total tick count, which is
 -- used to decide when nothing further has happened
 freeTick t
-   = SM (\_st_env us sc -> let sc' = doFreeSimplTick t sc
-                           in sc' `seq` return ((), us, sc'))
+   = SM (\_st_env us tape sc -> let sc' = doFreeSimplTick t sc
+                           in sc' `seq` return ((), us, tape, sc'))
 \end{code}
