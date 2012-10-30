@@ -167,6 +167,24 @@ newId fs ty = do uniq <- getUniqueM
                  return (mkSysLocal fs uniq ty)
 \end{code}
 
+%************************************************************************
+%*                                                                      *
+\subsection{The tape}
+%*                                                                      *
+%************************************************************************
+
+\begin{code}
+consumeDecision :: SimplM SearchTapeElement
+consumeDecision = SM (\_st_env us tape sc -> case tape of
+                       Just (te:tes) -> return (te, us, Just tes, sc)
+                       otherwise -> error "Ran out of tape early, I don't know what to do")
+
+gotTape :: SimplM Bool
+gotTape = SM (\_st_env us tape sc -> case tape of
+                       Just t -> return (True, us, Just t, sc)
+                       Nothing -> return (False, us, Nothing, sc))
+
+\end{code}
 
 %************************************************************************
 %*                                                                      *
