@@ -1406,8 +1406,18 @@ completeCall env var cont
                n_val_args = length arg_infos
                interesting_cont = interestingCallContext call_cont
                unfolding    = activeUnfolding env var
-               maybe_inline = callSiteInline dflags var unfolding
+               -- Two modes of operation regular vs search. In regular, inlining decisions are made locally, in search an external driver tells us what to do. There is no pipe for external drivers yet.
+               isInlinable  = isCheapUnfolding $ idUnfolding var -- if isCheapUnfolding, then no risk of work duplication; inlining decisions can be rationally made at compile time.
+               regular_maybe_inline = callSiteInline dflags var unfolding
                                              lone_variable arg_infos interesting_cont
+               regular_mode = True
+
+        ; maybe_inline <- if (not regular_mode) && isInlinable
+           then do let search_should_inline = False -- Here should consume the next bit from the tape, and decide according to it.
+                   return (if search_should_inline
+                                          then Just $ uf_tmpl $ idUnfolding var
+                                          else Nothing)
+           else return regular_maybe_inline
         ; case maybe_inline of {
             Just expr      -- There is an inlining!
               ->  do { checkedTick (UnfoldingDone var)
