@@ -12,6 +12,8 @@ module SimplMonad (
 
         -- Unique supply
         MonadUnique(..), newId,
+        -- Tape access
+        gotTape, consumeDecision,
 
         -- Counting
         SimplCount, tick, freeTick, checkedTick,
@@ -41,7 +43,7 @@ For the simplifier monad, we want to {\em thread} a unique supply and a counter.
 (Command-line switches move around through the explicitly-passed SimplEnv.)
 
 \begin{code}
-newtype SearchTapeElement = TE Bool
+type SearchTapeElement = Bool
 type MTape = Maybe [SearchTapeElement]
 newtype SimplM result
   =  SM  { unSM :: SimplTopEnv  -- Envt that does not change much

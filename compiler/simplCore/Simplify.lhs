@@ -1410,10 +1410,9 @@ completeCall env var cont
                isInlinable  = isCheapUnfolding $ idUnfolding var -- if isCheapUnfolding, then no risk of work duplication; inlining decisions can be rationally made at compile time.
                regular_maybe_inline = callSiteInline dflags var unfolding
                                              lone_variable arg_infos interesting_cont
-               regular_mode = True
-
-        ; maybe_inline <- if (not regular_mode) && isInlinable
-           then do let search_should_inline = False -- Here should consume the next bit from the tape, and decide according to it.
+        ; search_mode <- gotTape
+        ; maybe_inline <- if search_mode && isInlinable
+           then do search_should_inline <- consumeDecision -- Here should consume the next bit from the tape, and decide according to it.
                    return (if search_should_inline
                                           then Just $ uf_tmpl $ idUnfolding var
                                           else Nothing)
