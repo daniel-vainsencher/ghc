@@ -13,7 +13,7 @@ module SimplMonad (
         -- Unique supply
         MonadUnique(..), newId,
         -- Tape access
-        gotTape, consumeDecision,
+        gotTape, consumeDecision, MTape,
 
         -- Counting
         SimplCount, tick, freeTick, checkedTick,

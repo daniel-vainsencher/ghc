@@ -11,7 +11,7 @@
 --     http://hackage.haskell.org/trac/ghc/wiki/Commentary/CodingStyle#TabsvsSpaces
 -- for details
 
-module SimplCore ( core2core, simplifyExpr ) where
+module SimplCore ( core2core, simplifyExpr, simplifyPgm ) where
 
 #include "HsVersions.h"
 
@@ -369,8 +369,9 @@ runCorePasses passes guts
             ; return guts' }
 
 doCorePass :: DynFlags -> CoreToDo -> ModGuts -> CoreM ModGuts
-doCorePass _      pass@(CoreDoSimplify {})  = {-# SCC "Simplify" #-}
-                                              simplifyPgm pass
+doCorePass _      pass@(CoreDoSimplify max_iterations _ )  = {-# SCC "Simplify" #-}
+                                              simplifyPgm pass noTapes
+                                              where noTapes = replicate max_iterations Nothing
 
 doCorePass _      CoreCSE                   = {-# SCC "CommonSubExpr" #-}
                                               doPass cseProgram
@@ -537,28 +538,29 @@ simplExprGently env expr = do
 %************************************************************************
 
 \begin{code}
-simplifyPgm :: CoreToDo -> ModGuts -> CoreM ModGuts
-simplifyPgm pass guts
+simplifyPgm :: CoreToDo -> [MTape] -> ModGuts -> CoreM ModGuts
+simplifyPgm pass tapes guts
   = do { hsc_env <- getHscEnv
        ; us <- getUniqueSupplyM
        ; rb <- getRuleBase
        ; liftIOWithCount $
-         simplifyPgmIO pass hsc_env us rb guts }
+         simplifyPgmIO pass hsc_env us tapes rb guts }
 
 simplifyPgmIO :: CoreToDo
               -> HscEnv
               -> UniqSupply
+              -> [MTape]
               -> RuleBase
               -> ModGuts
               -> IO (SimplCount, ModGuts)  -- New bindings
 
 simplifyPgmIO pass@(CoreDoSimplify max_iterations mode)
-              hsc_env us hpt_rule_base
+              hsc_env us tapes hpt_rule_base
               guts@(ModGuts { mg_module = this_mod
                             , mg_binds = binds, mg_rules = rules
                             , mg_fam_inst_env = fam_inst_env })
   = do { (termination_msg, it_count, counts_out, guts')
-           <- do_iteration us 1 [] binds rules
+           <- do_iteration us 1 [] tapes binds rules
 
         ; Err.dumpIfSet dflags (dump_phase && dopt Opt_D_dump_simpl_stats dflags)
                   "Simplifier statistics for following pass"
@@ -577,11 +579,12 @@ simplifyPgmIO pass@(CoreDoSimplify max_iterations mode)
     do_iteration :: UniqSupply
                  -> Int          -- Counts iterations
                  -> [SimplCount] -- Counts from earlier iterations, reversed
+                 -> [MTape]
                  -> CoreProgram  -- Bindings in
                  -> [CoreRule]   -- and orphan rules
                  -> IO (String, Int, SimplCount, ModGuts)
 
-    do_iteration us iteration_no counts_so_far binds rules
+    do_iteration us iteration_no counts_so_far tapes binds rules
         -- iteration_no is the number of the iteration we are
         -- about to begin, with '1' for the first
       | iteration_no > max_iterations   -- Stop if we've run out of iterations
@@ -630,7 +633,7 @@ simplifyPgmIO pass@(CoreDoSimplify max_iterations mode)
                 ; fam_envs = (eps_fam_inst_env eps, fam_inst_env) } ;
 
                 -- Simplify the program
-           (env1, counts1) <- initSmpl dflags rule_base2 fam_envs us1 Nothing sz simpl_binds ;
+           (env1, counts1) <- initSmpl dflags rule_base2 fam_envs us1 (tapes!! (iteration_no - 1)) sz simpl_binds ;
 
            let  { binds1 = getFloatBinds env1
                 ; rules1 = substRulesForImportedIds (mkCoreSubst (text "imp-rules") env1) rules
@@ -656,7 +659,7 @@ simplifyPgmIO pass@(CoreDoSimplify max_iterations mode)
            end_iteration dflags pass iteration_no counts1 binds2 rules1 ;
 
                 -- Loop
-           do_iteration us2 (iteration_no + 1) (counts1:counts_so_far) binds2 rules1
+           do_iteration us2 (iteration_no + 1) (counts1:counts_so_far) tapes binds2 rules1
            } }
       | otherwise = panic "do_iteration"
       where
@@ -667,7 +670,7 @@ simplifyPgmIO pass@(CoreDoSimplify max_iterations mode)
         totalise = foldr (\c acc -> acc `plusSimplCount` c)
                          (zeroSimplCount dflags)
 
-simplifyPgmIO _ _ _ _ _ = panic "simplifyPgmIO"
+simplifyPgmIO _ _ _ _ _ _ = panic "simplifyPgmIO"
 
 -------------------
 end_iteration :: DynFlags -> CoreToDo -> Int
