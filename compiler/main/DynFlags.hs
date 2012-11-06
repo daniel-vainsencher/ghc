@@ -22,7 +22,7 @@ module DynFlags (
         FatalMessager, LogAction, FlushOut(..), FlushErr(..),
         ProfAuto(..),
         glasgowExtsFlags,
-        dopt,
+        dopt, dopt_set,
         gopt, gopt_set, gopt_unset,
         wopt, wopt_set, wopt_unset,
         xopt, xopt_set, xopt_unset,
