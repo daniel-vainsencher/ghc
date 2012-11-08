@@ -27,7 +27,7 @@ module CoreMonad (
     -- * Counting
     SimplCount, doSimplTick, doFreeSimplTick, simplCountN,
     pprSimplCount, plusSimplCount, zeroSimplCount, 
-    isZeroSimplCount, hasDetailedCounts, Tick(..), getTickCount, computeScore,
+    isZeroSimplCount, hasDetailedCounts, Tick(..), getTickCount, computeScore, DrivenCallSiteInlineResult(..),
 
     -- * The monad
     CoreM, runCoreM,
@@ -624,9 +624,12 @@ data Tick
   | CaseIdentity		Id	-- Case binder
   | FillInCaseDefault		Id	-- Case binder
   | DeadBindingElim		Id
+  | InSearchMode                DrivenCallSiteInlineResult
 
   | BottomFound		
   | SimplifierDone		-- Ticked at each iteration of the simplifier
+
+data DrivenCallSiteInlineResult = NotInlinable | ToldNo | ToldYes deriving (Show, Eq, Ord)
 
 instance Outputable Tick where
   ppr tick = text (tickString tick) <+> pprTickCts tick
@@ -657,7 +660,8 @@ tickToTag (FillInCaseDefault _)		= 13
 tickToTag BottomFound			= 14
 tickToTag SimplifierDone		= 16
 tickToTag (AltMerge _)			= 17
-tickToTag (DeadBindingElim _)		= 18
+tickToTag (DeadBindingElim _)           = 18
+tickToTag (InSearchMode _)              = 19
 
 tickString :: Tick -> String
 tickString (PreInlineUnconditionally _)	= "PreInlineUnconditionally"
@@ -677,7 +681,8 @@ tickString (CaseIdentity _)		= "CaseIdentity"
 tickString (FillInCaseDefault _)	= "FillInCaseDefault"
 tickString BottomFound			= "BottomFound"
 tickString SimplifierDone		= "SimplifierDone"
-tickString (DeadBindingElim _) 		= "DeadBindingElim"
+tickString (DeadBindingElim _)          = "DeadBindingElim"
+tickString (InSearchMode _)             = "InSearchMode"
 
 pprTickCts :: Tick -> SDoc
 pprTickCts (PreInlineUnconditionally v)	= ppr v
@@ -693,8 +698,10 @@ pprTickCts (KnownBranch v)		= ppr v
 pprTickCts (CaseMerge v)		= ppr v
 pprTickCts (AltMerge v)			= ppr v
 pprTickCts (CaseElim v)			= ppr v
-pprTickCts (CaseIdentity v)		= ppr v
-pprTickCts (FillInCaseDefault v)	= ppr v
+pprTickCts (CaseIdentity v)             = ppr v
+pprTickCts (FillInCaseDefault v)        = ppr v
+pprTickCts (DeadBindingElim v)          = ppr v
+pprTickCts (InSearchMode x)          = ppr $ show x
 pprTickCts _    			= empty
 
 cmpTick :: Tick -> Tick -> Ordering
@@ -717,8 +724,10 @@ cmpEqTick (CaseMerge a)			(CaseMerge b)			= a `compare` b
 cmpEqTick (AltMerge a)			(AltMerge b)			= a `compare` b
 cmpEqTick (CaseElim a)			(CaseElim b)			= a `compare` b
 cmpEqTick (CaseIdentity a)		(CaseIdentity b)		= a `compare` b
-cmpEqTick (FillInCaseDefault a)		(FillInCaseDefault b)		= a `compare` b
-cmpEqTick _     			_     				= EQ
+cmpEqTick (FillInCaseDefault a)         (FillInCaseDefault b)           = a `compare` b
+cmpEqTick (DeadBindingElim a)           (DeadBindingElim b)             = a `compare` b
+cmpEqTick (InSearchMode a)              (InSearchMode b)                = a `compare` b
+cmpEqTick _                             _                               = EQ
 \end{code}
 
 

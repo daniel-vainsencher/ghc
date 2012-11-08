@@ -24,7 +24,7 @@ import Coercion hiding  ( substCo, substTy, substCoVar, extendTvSubst )
 import OptCoercion      ( optCoercion )
 import FamInstEnv       ( topNormaliseType )
 import DataCon          ( DataCon, dataConWorkId, dataConRepStrictness )
-import CoreMonad        ( Tick(..), SimplifierMode(..) )
+import CoreMonad        ( Tick(..), SimplifierMode(..), DrivenCallSiteInlineResult(..) )
 import CoreSyn
 import Demand           ( isStrictDmd, StrictSig(..), dmdTypeDepth )
 import PprCore          ( pprParendExpr, pprCoreExpr )
@@ -1411,12 +1411,17 @@ completeCall env var cont
                regular_maybe_inline = callSiteInline dflags var unfolding
                                              lone_variable arg_infos interesting_cont
         ; search_mode <- gotTape
-        ; maybe_inline <- if search_mode && isInlinable
-           then do search_should_inline <- consumeDecision -- Here should consume the next bit from the tape, and decide according to it.
-                   return (if search_should_inline
-                                          then Just $ uf_tmpl $ idUnfolding var
-                                          else Nothing)
-           else return regular_maybe_inline
+        ; maybe_inline <- if not search_mode
+         then return regular_maybe_inline
+         else if not isInlinable
+          then do freeTick (InSearchMode NotInlinable)
+                  return Nothing
+          else do search_should_inline <- consumeDecision -- Here should consume the next bit from the tape, and decide according to it.
+                  if search_should_inline
+                                          then do freeTick (InSearchMode ToldYes)
+                                                  return $ Just $ uf_tmpl $ idUnfolding var
+                                          else do freeTick (InSearchMode ToldYes)
+                                                  return Nothing
         ; case maybe_inline of {
             Just expr      -- There is an inlining!
               ->  do { checkedTick (UnfoldingDone var)
