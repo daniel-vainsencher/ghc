@@ -15,7 +15,7 @@
 
 module CoreMonad (
     -- * Configuration of the core-to-core passes
-    CoreToDo(..), runWhen, runMaybe,
+    CoreToDo(..), MTape, SearchTapeElement, runWhen, runMaybe,
     SimplifierMode(..),
     FloatOutSwitches(..),
     dumpSimplPhase, pprPassDetails, 
@@ -27,7 +27,7 @@ module CoreMonad (
     -- * Counting
     SimplCount, doSimplTick, doFreeSimplTick, simplCountN,
     pprSimplCount, plusSimplCount, zeroSimplCount, 
-    isZeroSimplCount, hasDetailedCounts, Tick(..),
+    isZeroSimplCount, hasDetailedCounts, Tick(..), getTickCount, computeScore,
 
     -- * The monad
     CoreM, runCoreM,
@@ -217,7 +217,7 @@ displayLintResults dflags pass warns errs binds
 showLintWarnings :: CoreToDo -> Bool
 -- Disable Lint warnings on the first simplifier pass, because
 -- there may be some INLINE knots still tied, which is tiresomely noisy
-showLintWarnings (CoreDoSimplify _ (SimplMode { sm_phase = InitialPhase })) = False
+showLintWarnings (CoreDoSimplify _ _ (SimplMode { sm_phase = InitialPhase })) = False
 showLintWarnings _ = True
 \end{code}
 
@@ -230,13 +230,13 @@ showLintWarnings _ = True
 %************************************************************************
 
 \begin{code}
-
 data CoreToDo           -- These are diff core-to-core passes,
                         -- which may be invoked in any order,
                         -- as many times as you like.
 
   = CoreDoSimplify      -- The core-to-core simplifier.
         Int                    -- Max iterations
+        [MTape]                -- Tape to use, or Nothing
         SimplifierMode
   | CoreDoPluginPass String PluginPass
   | CoreDoFloatInwards
@@ -261,6 +261,10 @@ data CoreToDo           -- These are diff core-to-core passes,
 
   | CoreTidy
   | CorePrep
+
+-- | Used to drive the simplifier
+type SearchTapeElement = Bool
+type MTape = Maybe [SearchTapeElement]
 
 \end{code}
 
@@ -289,7 +293,7 @@ coreDumpFlag CoreDoNothing           = Nothing
 coreDumpFlag (CoreDoPasses {})       = Nothing
 
 instance Outputable CoreToDo where
-  ppr (CoreDoSimplify _ _)     = ptext (sLit "Simplifier")
+  ppr (CoreDoSimplify _ _  _)     = ptext (sLit "Simplifier")
   ppr (CoreDoPluginPass s _)   = ptext (sLit "Core plugin: ") <+> text s
   ppr CoreDoFloatInwards       = ptext (sLit "Float inwards")
   ppr (CoreDoFloatOutwards f)  = ptext (sLit "Float out") <> parens (ppr f)
@@ -311,7 +315,7 @@ instance Outputable CoreToDo where
   ppr (CoreDoPasses {})        = ptext (sLit "CoreDoPasses")
 
 pprPassDetails :: CoreToDo -> SDoc
-pprPassDetails (CoreDoSimplify n md) = vcat [ ptext (sLit "Max iterations =") <+> int n 
+pprPassDetails (CoreDoSimplify n _ md) = vcat [ ptext (sLit "Max iterations =") <+> int n
                                             , ppr md ]
 pprPassDetails _ = empty
 \end{code}
@@ -518,6 +522,14 @@ zeroSimplCount dflags
 
 isZeroSimplCount (VerySimplCount n)    	    = n==0
 isZeroSimplCount (SimplCount { ticks = n }) = n==0
+
+getTickCount SimplCount {details = det} tick
+  = Map.findWithDefault 0 tick det
+getSimplCount _ _ = error "VerySimplCounts cannot answer detailed queries"
+
+computeScore :: SimplCount -> (Tick -> Float) -> Float
+computeScore (SimplCount {details = counts }) f
+  = sum $ map (\ (t,c) -> (fromIntegral c) * (f t) ) $ Map.toList counts
 
 hasDetailedCounts (VerySimplCount {}) = False
 hasDetailedCounts (SimplCount {})     = True

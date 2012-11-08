@@ -142,11 +142,13 @@ getCoreToDo dflags
                           , sm_eta_expand = eta_expand_on
                           , sm_inline     = True
                           , sm_case_case  = True }
-
+    tapesFor iter dflags phase = replicate iter Nothing
+    emptyTapes n = replicate n Nothing
     simpl_phase phase names iter
       = CoreDoPasses
       $   [ maybe_strictness_before phase
           , CoreDoSimplify iter
+                (tapesFor iter dflags phase)
                 (base_mode { sm_phase = Phase phase
                            , sm_names = names })
 
@@ -182,6 +184,7 @@ getCoreToDo dflags
 
         -- initial simplify: mk specialiser happy: minimum effort please
     simpl_gently = CoreDoSimplify max_iter
+		       (emptyTapes max_iter)
                        (base_mode { sm_phase = InitialPhase
                                   , sm_names = ["Gentle"]
                                   , sm_rules = rules_on   -- Note [RULEs enabled in SimplGently]
@@ -194,6 +197,7 @@ getCoreToDo dflags
      if opt_level == 0 then
        [ vectorisation
        , CoreDoSimplify max_iter
+             (emptyTapes max_iter)
              (base_mode { sm_phase = Phase 0
                         , sm_names = ["Non-opt simplification"] }) 
        ]
@@ -369,9 +373,8 @@ runCorePasses passes guts
             ; return guts' }
 
 doCorePass :: DynFlags -> CoreToDo -> ModGuts -> CoreM ModGuts
-doCorePass _      pass@(CoreDoSimplify max_iterations _ )  = {-# SCC "Simplify" #-}
-                                              simplifyPgm pass noTapes
-                                              where noTapes = replicate max_iterations Nothing
+doCorePass _      pass@(CoreDoSimplify _ _ _ )  = {-# SCC "Simplify" #-}
+                                              simplifyPgm pass
 
 doCorePass _      CoreCSE                   = {-# SCC "CommonSubExpr" #-}
                                               doPass cseProgram
@@ -538,24 +541,23 @@ simplExprGently env expr = do
 %************************************************************************
 
 \begin{code}
-simplifyPgm :: CoreToDo -> [MTape] -> ModGuts -> CoreM ModGuts
-simplifyPgm pass tapes guts
+simplifyPgm :: CoreToDo -> ModGuts -> CoreM ModGuts
+simplifyPgm pass guts
   = do { hsc_env <- getHscEnv
        ; us <- getUniqueSupplyM
        ; rb <- getRuleBase
        ; liftIOWithCount $
-         simplifyPgmIO pass hsc_env us tapes rb guts }
+         simplifyPgmIO pass hsc_env us rb guts }
 
 simplifyPgmIO :: CoreToDo
               -> HscEnv
               -> UniqSupply
-              -> [MTape]
               -> RuleBase
               -> ModGuts
               -> IO (SimplCount, ModGuts)  -- New bindings
 
-simplifyPgmIO pass@(CoreDoSimplify max_iterations mode)
-              hsc_env us tapes hpt_rule_base
+simplifyPgmIO pass@(CoreDoSimplify max_iterations tapes mode)
+              hsc_env us hpt_rule_base
               guts@(ModGuts { mg_module = this_mod
                             , mg_binds = binds, mg_rules = rules
                             , mg_fam_inst_env = fam_inst_env })
