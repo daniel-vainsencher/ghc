@@ -672,7 +672,7 @@ simplifyPgmIO pass@(CoreDoSimplify max_iterations tapes mode)
         totalise = foldr (\c acc -> acc `plusSimplCount` c)
                          (zeroSimplCount dflags)
 
-simplifyPgmIO _ _ _ _ _ _ = panic "simplifyPgmIO"
+simplifyPgmIO _ _ _ _ _ = panic "simplifyPgmIO"
 
 -------------------
 end_iteration :: DynFlags -> CoreToDo -> Int
