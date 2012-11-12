@@ -1420,7 +1420,7 @@ completeCall env var cont
                   if search_should_inline
                                           then do freeTick (InSearchMode ToldYes)
                                                   return $ Just $ uf_tmpl $ idUnfolding var
-                                          else do freeTick (InSearchMode ToldYes)
+                                          else do freeTick (InSearchMode ToldNo)
                                                   return Nothing
         ; case maybe_inline of {
             Just expr      -- There is an inlining!
