@@ -14,7 +14,8 @@
 module SimplCore ( core2core, simplifyExpr, simplifyPgm ) where
 
 #include "HsVersions.h"
-
+import Data.List
+import Data.Char
 import DynFlags
 import CoreSyn
 import CoreSubst
@@ -142,13 +143,25 @@ getCoreToDo dflags
                           , sm_eta_expand = eta_expand_on
                           , sm_inline     = True
                           , sm_case_case  = True }
-    tapesFor iter dflags phase = replicate iter Nothing
+    -- Interpret "yyyNNynyN" as one tape with three inlines and an infinity of refusals, one missing tape (Nothing), and one [True False True] ++ repeat False.
+    tapeFromString "" = Nothing
+    tapeFromString str = Just (map (\c -> case c of
+                                           'y' -> True
+                                           'n' -> False) str ++ repeat False)
+    tapeSpecPiece "" = Nothing
+    tapeSpecPiece rest = let (first, rest') = break isUpper rest
+                         in Just (tapeFromString first, tail rest')
+    interpretTapes specStr = unfoldr tapeSpecPiece specStr
+    tapesFor iter dflags names phase = case names of 
+         ["final"] -> (interpretTapes $ sUseTape $ settings dflags) ++ repeat Nothing
+         otherwise -> repeat Nothing
     emptyTapes n = replicate n Nothing
+
     simpl_phase phase names iter
       = CoreDoPasses
       $   [ maybe_strictness_before phase
           , CoreDoSimplify iter
-                (tapesFor iter dflags phase)
+                (tapesFor iter dflags names phase)
                 (base_mode { sm_phase = Phase phase
                            , sm_names = names })
 
