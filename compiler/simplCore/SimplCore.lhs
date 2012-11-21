@@ -147,7 +147,7 @@ getCoreToDo dflags
     tapeFromString "" = Nothing
     tapeFromString str = Just (map (\c -> case c of
                                            'y' -> True
-                                           'n' -> False) str ++ repeat False)
+                                           'n' -> False) str)
     tapeSpecPiece "" = Nothing
     tapeSpecPiece rest = let (first, rest') = break isUpper rest
                          in Just (tapeFromString first, tail rest')

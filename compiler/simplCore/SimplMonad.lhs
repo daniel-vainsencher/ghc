@@ -13,7 +13,7 @@ module SimplMonad (
         -- Unique supply
         MonadUnique(..), newId,
         -- Tape access
-        gotTape, consumeDecision,
+        gotTape, tapeLeft, consumeDecision,
 
         -- Counting
         SimplCount, tick, freeTick, checkedTick,
@@ -181,8 +181,13 @@ consumeDecision = SM (\_st_env us tape sc -> case tape of
 
 gotTape :: SimplM Bool
 gotTape = SM (\_st_env us tape sc -> case tape of
-                       Just t -> return (True, us, Just t, sc)
-                       Nothing -> return (False, us, Nothing, sc))
+                       Just t -> return (True, us, tape, sc)
+                       otherwise -> return (False, us, tape, sc))
+
+tapeLeft :: SimplM Bool
+tapeLeft = SM (\_st_env us tape sc -> case tape of
+                       Just (te:tes) -> return (True, us, tape, sc)
+                       otherwise -> return (False, us, tape, sc))
 
 \end{code}
 

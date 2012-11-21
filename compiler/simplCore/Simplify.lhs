@@ -40,6 +40,7 @@ import MonadUtils       ( foldlM, mapAccumLM, liftIO )
 import Maybes           ( orElse, isNothing )
 import Control.Monad
 import Data.List        ( mapAccumL )
+import Data.Maybe       ( isJust )
 import Outputable
 import FastString
 import Pair
@@ -1411,12 +1412,16 @@ completeCall env var cont
                regular_maybe_inline = callSiteInline dflags var unfolding
                                              lone_variable arg_infos interesting_cont
         ; search_mode <- gotTape
+        ; tapeRemains <- tapeLeft
         ; maybe_inline <- if not search_mode
          then return regular_maybe_inline
          else if not isInlinable
           then do freeTick (InSearchMode NotInlinable)
                   return Nothing
-          else do search_should_inline <- consumeDecision -- Here should consume the next bit from the tape, and decide according to it.
+          else do search_should_inline <- if not tapeRemains
+                     then return $ isJust regular_maybe_inline
+                     else consumeDecision -- Here should consume the next bit from the tape, and decide according to it.
+
                   if search_should_inline
                                           then do freeTick (InSearchMode ToldYes)
                                                   return $ Just $ uf_tmpl $ idUnfolding var
