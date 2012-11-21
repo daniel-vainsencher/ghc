@@ -22,7 +22,7 @@ module DynFlags (
         FatalMessager, LogAction, FlushOut(..), FlushErr(..),
         ProfAuto(..),
         glasgowExtsFlags,
-        dopt,
+        dopt, dopt_set,
         gopt, gopt_set, gopt_unset,
         wopt, wopt_set, wopt_unset,
         xopt, xopt_set, xopt_unset,
@@ -495,7 +495,6 @@ data ExtensionFlag
    | Opt_MultiParamTypeClasses
    | Opt_FunctionalDependencies
    | Opt_UnicodeSyntax
-   | Opt_PolymorphicComponents
    | Opt_ExistentialQuantification
    | Opt_MagicHash
    | Opt_EmptyDataDecls
@@ -509,7 +508,6 @@ data ExtensionFlag
    | Opt_TupleSections
    | Opt_PatternGuards
    | Opt_LiberalTypeSynonyms
-   | Opt_Rank2Types
    | Opt_RankNTypes
    | Opt_ImpredicativeTypes
    | Opt_TypeOperators
@@ -739,6 +737,7 @@ data Settings = Settings {
   -- options for particular phases
   sOpt_L                 :: [String],
   sOpt_P                 :: [String],
+  sUseTape               :: String,
   sOpt_F                 :: [String],
   sOpt_c                 :: [String],
   sOpt_a                 :: [String],
@@ -1867,6 +1866,7 @@ dynamic_flags = [
     -- need to appear before -pgmL to be parsed as LLVM flags.
   , Flag "pgmlo"          (hasArg (\f -> alterSettings (\s -> s { sPgm_lo  = (f,[])})))
   , Flag "pgmlc"          (hasArg (\f -> alterSettings (\s -> s { sPgm_lc  = (f,[])})))
+  , Flag "fUseTape"       (hasArg (\f -> alterSettings (\s -> s { sUseTape = f})))
   , Flag "pgmL"           (hasArg (\f -> alterSettings (\s -> s { sPgm_L   = f})))
   , Flag "pgmP"           (hasArg setPgmP)
   , Flag "pgmF"           (hasArg (\f -> alterSettings (\s -> s { sPgm_F   = f})))
@@ -2447,7 +2447,6 @@ xFlags = [
   ( "PatternGuards",                    Opt_PatternGuards, nop ),
   ( "UnicodeSyntax",                    Opt_UnicodeSyntax, nop ),
   ( "MagicHash",                        Opt_MagicHash, nop ),
-  ( "PolymorphicComponents",            Opt_PolymorphicComponents, nop ),
   ( "ExistentialQuantification",        Opt_ExistentialQuantification, nop ),
   ( "KindSignatures",                   Opt_KindSignatures, nop ),
   ( "EmptyDataDecls",                   Opt_EmptyDataDecls, nop ),
@@ -2460,8 +2459,11 @@ xFlags = [
   ( "CApiFFI",                          Opt_CApiFFI, nop ),
   ( "GHCForeignImportPrim",             Opt_GHCForeignImportPrim, nop ),
   ( "LiberalTypeSynonyms",              Opt_LiberalTypeSynonyms, nop ),
-  ( "Rank2Types",                       Opt_Rank2Types, nop ),
+
+  ( "PolymorphicComponents",            Opt_RankNTypes, nop),
+  ( "Rank2Types",                       Opt_RankNTypes, nop),
   ( "RankNTypes",                       Opt_RankNTypes, nop ),
+
   ( "ImpredicativeTypes",               Opt_ImpredicativeTypes, nop),
   ( "TypeOperators",                    Opt_TypeOperators, nop ),
   ( "ExplicitNamespaces",               Opt_ExplicitNamespaces, nop ),
@@ -2576,11 +2578,9 @@ default_PIC platform =
 impliedFlags :: [(ExtensionFlag, TurnOnFlag, ExtensionFlag)]
 impliedFlags
   = [ (Opt_RankNTypes,                turnOn, Opt_ExplicitForAll)
-    , (Opt_Rank2Types,                turnOn, Opt_ExplicitForAll)
     , (Opt_ScopedTypeVariables,       turnOn, Opt_ExplicitForAll)
     , (Opt_LiberalTypeSynonyms,       turnOn, Opt_ExplicitForAll)
     , (Opt_ExistentialQuantification, turnOn, Opt_ExplicitForAll)
-    , (Opt_PolymorphicComponents,     turnOn, Opt_ExplicitForAll)
     , (Opt_FlexibleInstances,         turnOn, Opt_TypeSynonymInstances)
     , (Opt_FunctionalDependencies,    turnOn, Opt_MultiParamTypeClasses)
 
@@ -2729,7 +2729,6 @@ glasgowExtsFlags = [
            , Opt_MultiParamTypeClasses
            , Opt_FunctionalDependencies
            , Opt_MagicHash
-           , Opt_PolymorphicComponents
            , Opt_ExistentialQuantification
            , Opt_UnicodeSyntax
            , Opt_PostfixOperators

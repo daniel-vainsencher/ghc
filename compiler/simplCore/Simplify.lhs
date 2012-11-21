@@ -24,7 +24,7 @@ import Coercion hiding  ( substCo, substTy, substCoVar, extendTvSubst )
 import OptCoercion      ( optCoercion )
 import FamInstEnv       ( topNormaliseType )
 import DataCon          ( DataCon, dataConWorkId, dataConRepStrictness )
-import CoreMonad        ( Tick(..), SimplifierMode(..) )
+import CoreMonad        ( Tick(..), SimplifierMode(..), DrivenCallSiteInlineResult(..) )
 import CoreSyn
 import Demand           ( isStrictDmd, StrictSig(..), dmdTypeDepth )
 import PprCore          ( pprParendExpr, pprCoreExpr )
@@ -40,6 +40,7 @@ import MonadUtils       ( foldlM, mapAccumLM, liftIO )
 import Maybes           ( orElse, isNothing )
 import Control.Monad
 import Data.List        ( mapAccumL )
+import Data.Maybe       ( isJust )
 import Outputable
 import FastString
 import Pair
@@ -1406,8 +1407,26 @@ completeCall env var cont
                n_val_args = length arg_infos
                interesting_cont = interestingCallContext call_cont
                unfolding    = activeUnfolding env var
-               maybe_inline = callSiteInline dflags var unfolding
+               -- Two modes of operation regular vs search. In regular, inlining decisions are made locally, in search an external driver tells us what to do. There is no pipe for external drivers yet.
+               isInlinable  = isCheapUnfolding $ idUnfolding var -- if isCheapUnfolding, then no risk of work duplication; inlining decisions can be rationally made at compile time.
+               regular_maybe_inline = callSiteInline dflags var unfolding
                                              lone_variable arg_infos interesting_cont
+        ; search_mode <- gotTape
+        ; tapeRemains <- tapeLeft
+        ; maybe_inline <- if not search_mode
+         then return regular_maybe_inline
+         else if not isInlinable
+          then do freeTick (InSearchMode NotInlinable)
+                  return Nothing
+          else do search_should_inline <- if not tapeRemains
+                     then return $ isJust regular_maybe_inline
+                     else consumeDecision -- Here should consume the next bit from the tape, and decide according to it.
+
+                  if search_should_inline
+                                          then do freeTick (InSearchMode ToldYes)
+                                                  return $ Just $ uf_tmpl $ idUnfolding var
+                                          else do freeTick (InSearchMode ToldNo)
+                                                  return Nothing
         ; case maybe_inline of {
             Just expr      -- There is an inlining!
               ->  do { checkedTick (UnfoldingDone var)
@@ -1798,7 +1817,7 @@ rebuildCase env scrut case_bndr [(_, bndrs, rhs)] cont
           --                            ppr scrut]) $
           tick (CaseElim case_bndr)
         ; env' <- simplNonRecX env case_bndr scrut
-          -- If case_bndr is deads, simplNonRecX will discard
+          -- If case_bndr is dead, simplNonRecX will discard
         ; simplExprF env' rhs cont }
   where
     elim_lifted   -- See Note [Case elimination: lifted case]

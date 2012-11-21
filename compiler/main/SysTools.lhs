@@ -330,6 +330,7 @@ initSysTools mbMinusB
                     sPgm_lc  = (lc_prog,[]),
                     -- Hans: this isn't right in general, but you can
                     -- elaborate it in the same way as the others
+                    sUseTape = "",
                     sOpt_L       = [],
                     sOpt_P       = [],
                     sOpt_F       = [],
