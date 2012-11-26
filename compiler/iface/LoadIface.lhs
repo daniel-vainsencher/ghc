@@ -14,7 +14,7 @@ module LoadIface (
 
         -- IfM functions
         loadInterface, loadWiredInHomeIface, 
-        loadSysInterface, loadUserInterface, 
+        loadSysInterface, loadUserInterface, loadPluginInterface,
         findAndReadIface, readIface,    -- Used when reading the module's old interface
         loadDecls,      -- Should move to TcIface and be renamed
         initExternalPackageState,
@@ -158,6 +158,10 @@ loadUserInterface :: Bool -> SDoc -> Module -> IfM lcl ModIface
 loadUserInterface is_boot doc mod_name 
   = loadInterfaceWithException doc mod_name (ImportByUser is_boot)
 
+loadPluginInterface :: SDoc -> Module -> IfM lcl ModIface
+loadPluginInterface doc mod_name
+  = loadInterfaceWithException doc mod_name ImportByPlugin
+
 ------------------
 -- | A wrapper for 'loadInterface' that throws an exception if it fails
 loadInterfaceWithException :: SDoc -> Module -> WhereFrom -> IfM lcl ModIface
@@ -266,32 +270,36 @@ loadInterface doc_str mod from
 
         ; updateEps_  $ \ eps -> 
            if elemModuleEnv mod (eps_PIT eps) then eps else
-            eps { 
-              eps_PIT          = extendModuleEnv (eps_PIT eps) mod final_iface,
-              eps_PTE          = addDeclsToPTE   (eps_PTE eps) new_eps_decls,
-              eps_rule_base    = extendRuleBaseList (eps_rule_base eps) 
-                                                    new_eps_rules,
-              eps_inst_env     = extendInstEnvList (eps_inst_env eps)  
-                                                   new_eps_insts,
-              eps_fam_inst_env = extendFamInstEnvList (eps_fam_inst_env eps)
-                                                      new_eps_fam_insts,
-              eps_vect_info    = plusVectInfo (eps_vect_info eps) 
-                                              new_eps_vect_info,
-              eps_ann_env      = extendAnnEnvList (eps_ann_env eps)
-                                                  new_eps_anns,
-              eps_mod_fam_inst_env
-                               = let
-                                   fam_inst_env = 
-                                     extendFamInstEnvList emptyFamInstEnv
-                                                          new_eps_fam_insts
-                                 in
-                                 extendModuleEnv (eps_mod_fam_inst_env eps)
-                                                 mod
-                                                 fam_inst_env,
-              eps_stats        = addEpsInStats (eps_stats eps) 
-                                               (length new_eps_decls)
-                                               (length new_eps_insts)
-                                               (length new_eps_rules) }
+              case from of
+                ImportByPlugin -> eps {
+                  eps_PIT          = extendModuleEnv (eps_PIT eps) mod final_iface,
+                  eps_PTE          = addDeclsToPTE   (eps_PTE eps) new_eps_decls}
+                _              -> eps {
+                  eps_PIT          = extendModuleEnv (eps_PIT eps) mod final_iface,
+                  eps_PTE          = addDeclsToPTE   (eps_PTE eps) new_eps_decls,
+                  eps_rule_base    = extendRuleBaseList (eps_rule_base eps) 
+                                                        new_eps_rules,
+                  eps_inst_env     = extendInstEnvList (eps_inst_env eps)  
+                                                       new_eps_insts,
+                  eps_fam_inst_env = extendFamInstEnvList (eps_fam_inst_env eps)
+                                                          new_eps_fam_insts,
+                  eps_vect_info    = plusVectInfo (eps_vect_info eps) 
+                                                  new_eps_vect_info,
+                  eps_ann_env      = extendAnnEnvList (eps_ann_env eps)
+                                                      new_eps_anns,
+                  eps_mod_fam_inst_env
+                                   = let
+                                       fam_inst_env = 
+                                         extendFamInstEnvList emptyFamInstEnv
+                                                              new_eps_fam_insts
+                                     in
+                                     extendModuleEnv (eps_mod_fam_inst_env eps)
+                                                     mod
+                                                     fam_inst_env,
+                  eps_stats        = addEpsInStats (eps_stats eps) 
+                                                   (length new_eps_decls)
+                                                   (length new_eps_insts)
+                                                   (length new_eps_rules) }
 
         ; return (Succeeded final_iface)
     }}}}
@@ -305,6 +313,9 @@ wantHiBootFile dflags eps mod from
           | usr_boot && not this_package
           -> Failed (badSourceImport mod)
           | otherwise -> Succeeded usr_boot
+
+       ImportByPlugin
+          -> Succeeded False
 
        ImportBySystem
           | not this_package   -- If the module to be imported is not from this package
