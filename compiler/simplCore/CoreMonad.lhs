@@ -528,6 +528,7 @@ getTickCount SimplCount {details = det} tick
 getSimplCount _ _ = error "VerySimplCounts cannot answer detailed queries"
 
 computeScore :: SimplCount -> (Tick -> Float) -> Float
+computeScore (VerySimplCount _) _ = error "VerySimplCounts cannot answer detailed queries"
 computeScore (SimplCount {details = counts }) f
   = sum $ map (\ (t,c) -> (fromIntegral c) * (f t) ) $ Map.toList counts
 
