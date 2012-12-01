@@ -36,6 +36,8 @@ module CoreUnfold (
 	couldBeSmallEnoughToInline, inlineBoringOk,
 	certainlyWillInline, smallEnoughToInline,
 
+	CallSiteInlineSituation(..),
+
 	callSiteInline, CallCtxt(..),
 
         -- Reexport from CoreSubst (it only live there so it can be used
@@ -867,7 +869,7 @@ callSiteInline :: DynFlags
 	       -> Bool			-- True if there are are no arguments at all (incl type args)
 	       -> [ArgSummary]		-- One for each value arg; True if it is interesting
 	       -> CallCtxt		-- True <=> continuation is interesting
-	       -> Maybe CoreExpr	-- Unfolding, if any
+	       -> CallSiteInlineSituation -- Unfolding, if any
 
 instance Outputable ArgSummary where
   ppr TrivArg    = ptext (sLit "TrivArg")
@@ -897,6 +899,10 @@ instance Outputable CallCtxt where
   ppr CaseCtxt 	      = ptext (sLit "CaseCtxt")
   ppr ValAppCtxt      = ptext (sLit "ValAppCtxt")
 
+data CallSiteInlineSituation = MustInline CoreExpr
+     			     | CannotInline
+			     | SuggestInline CoreExpr Bool
+
 callSiteInline dflags id active_unfolding lone_variable arg_infos cont_info
   = case idUnfolding id of 
       -- idUnfolding checks for loop-breakers, returning NoUnfolding
@@ -909,15 +915,15 @@ callSiteInline dflags id active_unfolding lone_variable arg_infos cont_info
                                     arg_infos cont_info unf_template is_top 
                                     is_wf is_exp uf_arity guidance
           | dopt Opt_D_dump_inlinings dflags && dopt Opt_D_verbose_core2core dflags
-          -> pprTrace "Inactive unfolding:" (ppr id) Nothing
-          | otherwise -> Nothing
-	NoUnfolding 	 -> Nothing 
-	OtherCon {} 	 -> Nothing 
-	DFunUnfolding {} -> Nothing 	-- Never unfold a DFun
+          -> pprTrace "Inactive unfolding:" (ppr id) CannotInline
+          | otherwise -> CannotInline
+	NoUnfolding 	 -> CannotInline
+	OtherCon {} 	 -> CannotInline
+	DFunUnfolding {} -> CannotInline	-- Never unfold a DFun
 
 tryUnfolding :: DynFlags -> Id -> Bool -> [ArgSummary] -> CallCtxt
              -> CoreExpr -> Bool -> Bool -> Bool -> Arity -> UnfoldingGuidance
-	     -> Maybe CoreExpr	
+	     -> CallSiteInlineSituation
 tryUnfolding dflags id lone_variable 
              arg_infos cont_info unf_template is_top 
              is_wf is_exp uf_arity guidance
@@ -933,16 +939,16 @@ tryUnfolding dflags id lone_variable
                         text "is work-free:" <+> ppr is_wf,
 			text "guidance" <+> ppr guidance,
 			extra_doc,
-			text "ANSWER =" <+> if yes_or_no then text "YES" else text "NO"])
-	         result
-  | otherwise  = result
+			text "ANSWER =" <+> case answer of
+			  MustInline _ -> text "YES"
+			  CannotInline -> text "NO"
+			  SuggestInline _ bool -> text $ "Suggest: " ++ show bool])
+	         answer
+  | otherwise  = answer
 
   where
     n_val_args = length arg_infos
     saturated  = n_val_args >= uf_arity
-
-    result | yes_or_no = Just unf_template
-           | otherwise = Nothing
 
     interesting_args = any nonTriv arg_infos 
     	-- NB: (any nonTriv arg_infos) looks at the
@@ -968,17 +974,22 @@ tryUnfolding dflags id lone_variable
           ArgCtxt {} -> uf_arity > 0     		  -- Note [Inlining in ArgCtxt]
           ValAppCtxt -> True			          -- Note [Cast then apply]
 
-    (yes_or_no, extra_doc)
+    (answer, extra_doc)
       = case guidance of
-          UnfNever -> (False, empty)
+          UnfNever -> (SuggestInline unf_template False, empty)
 
           UnfWhen unsat_ok boring_ok 
-             -> (enough_args && (boring_ok || some_benefit), empty )
+             -> (if enough_args && (boring_ok || some_benefit)
+	     	    then MustInline unf_template
+		    else CannotInline
+		 , empty )
              where      -- See Note [INLINE for small functions (3)]
                enough_args = saturated || (unsat_ok && n_val_args > 0)
 
           UnfIfGoodArgs { ug_args = arg_discounts, ug_res = res_discount, ug_size = size }
-      	     -> ( is_wf && some_benefit && small_enough
+      	     -> ((if is_wf
+                    then SuggestInline unf_template $ some_benefit && small_enough
+                    else CannotInline)
                 , (text "discounted size =" <+> int discounted_size) )
     	     where
     	       discounted_size = size - discount
