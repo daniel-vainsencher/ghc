@@ -987,8 +987,8 @@ tryUnfolding dflags id lone_variable
                enough_args = saturated || (unsat_ok && n_val_args > 0)
 
           UnfIfGoodArgs { ug_args = arg_discounts, ug_res = res_discount, ug_size = size }
-      	     -> ((if is_wf
-                    then SuggestInline unf_template $ some_benefit && small_enough
+      	     -> ((if is_wf && some_benefit
+                    then SuggestInline unf_template $ small_enough
                     else CannotInline)
                 , (text "discounted size =" <+> int discounted_size) )
     	     where
