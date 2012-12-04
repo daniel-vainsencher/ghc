@@ -1414,10 +1414,10 @@ completeCall env var cont
         ; search_mode <- gotTape
         ; tapeRemains <- tapeLeft
 	; maybe_inline <- case regular_maybe_inline of
-	       MustInline expr -> return $ Just expr
-    	       CannotInline    -> return Nothing
-	       SuggestInline expr hint
-	         -> if not search_mode
+               MustInline expr -> return $ Just expr
+               CannotInline    -> return Nothing
+               SuggestInline expr hint
+                 -> if not search_mode
                    then return $ if hint then Just expr else Nothing
 		   else do search_should_inline <- if not tapeRemains
              		     then return $ hint
