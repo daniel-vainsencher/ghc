@@ -40,7 +40,6 @@ import MonadUtils       ( foldlM, mapAccumLM, liftIO )
 import Maybes           ( orElse, isNothing )
 import Control.Monad
 import Data.List        ( mapAccumL )
-import Data.Maybe       ( isJust )
 import Outputable
 import FastString
 import Pair

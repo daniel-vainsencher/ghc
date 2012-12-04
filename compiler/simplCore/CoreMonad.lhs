@@ -15,7 +15,7 @@
 
 module CoreMonad (
     -- * Configuration of the core-to-core passes
-    CoreToDo(..), MTape, SearchTapeElement, runWhen, runMaybe,
+    CoreToDo(..), MTape, SearchTapeElement, ActionSpec(..), SimplifierFeedback(..), runWhen, runMaybe,
     SimplifierMode(..),
     FloatOutSwitches(..),
     dumpSimplPhase, pprPassDetails, 
@@ -264,7 +264,19 @@ data CoreToDo           -- These are diff core-to-core passes,
 
 -- | Used to drive the simplifier
 type SearchTapeElement = Bool
-type MTape = Maybe [SearchTapeElement]
+type MTape = Maybe (ActionSpec SearchTapeElement)
+
+data ActionSpec a = ActionSpec { asSubproblems :: [ActionSpec a]
+                               , asAction :: a
+                               , asNext   :: (ActionSpec a)}
+                    | ActionSeqEnd deriving Show
+
+data SimplifierFeedback a
+     = SimplifierFeedback { sfbSubproblemFeedbacks :: [SimplifierFeedback a]
+                          , sfbSimplCounts :: SimplCount
+                          , sfbExprSize :: Int
+                          , sfbActions :: [[a]]}
+
 
 \end{code}
 

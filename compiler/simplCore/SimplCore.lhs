@@ -144,24 +144,12 @@ getCoreToDo dflags
                           , sm_inline     = True
                           , sm_case_case  = True }
     -- Interpret "yyyNNynyN" as one tape with three inlines and an infinity of refusals, one missing tape (Nothing), and one [True False True] ++ repeat False.
-    tapeFromString "" = Nothing
-    tapeFromString str = Just (map (\c -> case c of
-                                           'y' -> True
-                                           'n' -> False) str)
-    tapeSpecPiece "" = Nothing
-    tapeSpecPiece rest = let (first, rest') = break isUpper rest
-                         in Just (tapeFromString first, tail rest')
-    interpretTapes specStr = unfoldr tapeSpecPiece specStr
-    tapesFor iter dflags names phase = case names of 
-         ["final"] -> (interpretTapes $ sUseTape $ settings dflags) ++ repeat Nothing
-         otherwise -> repeat Nothing
-    emptyTapes n = replicate n Nothing
 
     simpl_phase phase names iter
       = CoreDoPasses
       $   [ maybe_strictness_before phase
           , CoreDoSimplify iter
-                (tapesFor iter dflags names phase)
+                (repeat Nothing)
                 (base_mode { sm_phase = Phase phase
                            , sm_names = names })
 
@@ -197,7 +185,7 @@ getCoreToDo dflags
 
         -- initial simplify: mk specialiser happy: minimum effort please
     simpl_gently = CoreDoSimplify max_iter
-		       (emptyTapes max_iter)
+                       (repeat Nothing)
                        (base_mode { sm_phase = InitialPhase
                                   , sm_names = ["Gentle"]
                                   , sm_rules = rules_on   -- Note [RULEs enabled in SimplGently]
@@ -210,7 +198,7 @@ getCoreToDo dflags
      if opt_level == 0 then
        [ vectorisation
        , CoreDoSimplify max_iter
-             (emptyTapes max_iter)
+             (repeat Nothing)
              (base_mode { sm_phase = Phase 0
                         , sm_names = ["Non-opt simplification"] }) 
        ]

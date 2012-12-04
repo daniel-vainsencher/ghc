@@ -176,18 +176,19 @@ newId fs ty = do uniq <- getUniqueM
 \begin{code}
 consumeDecision :: SimplM SearchTapeElement
 consumeDecision = SM (\_st_env us tape sc -> case tape of
-                       Just (te:tes) -> return (te, us, Just tes, sc)
-                       otherwise -> error "Ran out of tape early, I don't know what to do")
+                       Just ActionSpec {asAction = a, asNext = n}
+                                 -> return (a, us, Just n, sc)
+                       _         -> error "Ran out of tape early, I don't know what to do")
 
 gotTape :: SimplM Bool
 gotTape = SM (\_st_env us tape sc -> case tape of
-                       Just t -> return (True, us, tape, sc)
-                       otherwise -> return (False, us, tape, sc))
+                       Just _ -> return (True, us, tape, sc)
+                       _      -> return (False, us, tape, sc))
 
 tapeLeft :: SimplM Bool
 tapeLeft = SM (\_st_env us tape sc -> case tape of
-                       Just (te:tes) -> return (True, us, tape, sc)
-                       otherwise -> return (False, us, tape, sc))
+                       Just ActionSpec {} -> return (True, us, tape, sc)
+                       _                  -> return (False, us, tape, sc))
 
 \end{code}
 
