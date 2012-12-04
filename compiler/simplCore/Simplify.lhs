@@ -1416,11 +1416,12 @@ completeCall env var cont
 	; maybe_inline <- case regular_maybe_inline of
                MustInline expr -> return $ Just expr
                CannotInline    -> return Nothing
-               SuggestInline expr hint
+               SuggestInline expr True -> return $ Just expr
+               SuggestInline expr False
                  -> if not search_mode
-                   then return $ if hint then Just expr else Nothing
+                   then return Nothing
 		   else do search_should_inline <- if not tapeRemains
-             		     then return $ hint
+                             then return False
 	        	     else consumeDecision
 			   if search_should_inline
                               then do freeTick (InSearchMode ToldYes)
