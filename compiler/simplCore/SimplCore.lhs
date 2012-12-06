@@ -375,7 +375,8 @@ runCorePasses passes guts
 
 doCorePass :: DynFlags -> CoreToDo -> ModGuts -> CoreM ModGuts
 doCorePass _      pass@(CoreDoSimplify _ _ _ )  = {-# SCC "Simplify" #-}
-                                              simplifyPgm pass
+                                              \mg -> do (mg',_) <- simplifyPgm pass mg
+                                                        return mg'
 
 doCorePass _      CoreCSE                   = {-# SCC "CommonSubExpr" #-}
                                               doPass cseProgram
@@ -499,7 +500,7 @@ simplifyExpr dflags expr
 
 	; let sz = exprSize expr
 
-        ; (expr', counts) <- initSmpl dflags emptyRuleBase emptyFamInstEnvs us Nothing sz $
+        ; (expr', counts, _) <- initSmpl dflags emptyRuleBase emptyFamInstEnvs us Nothing sz $
 				 simplExprGently (simplEnvForGHCi dflags) expr
 
         ; Err.dumpIfSet dflags (dopt Opt_D_dump_simpl_stats dflags)
@@ -542,12 +543,12 @@ simplExprGently env expr = do
 %************************************************************************
 
 \begin{code}
-simplifyPgm :: CoreToDo -> ModGuts -> CoreM ModGuts
+simplifyPgm :: CoreToDo -> ModGuts -> CoreM (ModGuts, [SimplifierFeedback])
 simplifyPgm pass guts
   = do { hsc_env <- getHscEnv
        ; us <- getUniqueSupplyM
        ; rb <- getRuleBase
-       ; liftIOWithCount $
+       ; liftIOWithCountAndPass $
          simplifyPgmIO pass hsc_env us rb guts }
 
 simplifyPgmIO :: CoreToDo
@@ -555,15 +556,15 @@ simplifyPgmIO :: CoreToDo
               -> UniqSupply
               -> RuleBase
               -> ModGuts
-              -> IO (SimplCount, ModGuts)  -- New bindings
+              -> IO (SimplCount, [SimplifierFeedback], ModGuts)  -- New bindings
 
 simplifyPgmIO pass@(CoreDoSimplify max_iterations tapes mode)
               hsc_env us hpt_rule_base
               guts@(ModGuts { mg_module = this_mod
                             , mg_binds = binds, mg_rules = rules
                             , mg_fam_inst_env = fam_inst_env })
-  = do { (termination_msg, it_count, counts_out, guts')
-           <- do_iteration us 1 [] tapes binds rules
+  = do { (termination_msg, it_count, counts_out, feedback_out, guts')
+           <- do_iteration us 1 [] [] tapes binds rules
 
         ; Err.dumpIfSet dflags (dump_phase && dopt Opt_D_dump_simpl_stats dflags)
                   "Simplifier statistics for following pass"
@@ -571,7 +572,7 @@ simplifyPgmIO pass@(CoreDoSimplify max_iterations tapes mode)
                          blankLine,
                          pprSimplCount counts_out])
 
-        ; return (counts_out, guts')
+        ; return (counts_out, reverse feedback_out, guts')
     }
   where
     dflags      = hsc_dflags hsc_env
@@ -582,12 +583,13 @@ simplifyPgmIO pass@(CoreDoSimplify max_iterations tapes mode)
     do_iteration :: UniqSupply
                  -> Int          -- Counts iterations
                  -> [SimplCount] -- Counts from earlier iterations, reversed
+                 -> [SimplifierFeedback] -- From earlier iterations, reversed
                  -> [MTape]
                  -> CoreProgram  -- Bindings in
                  -> [CoreRule]   -- and orphan rules
-                 -> IO (String, Int, SimplCount, ModGuts)
+                 -> IO (String, Int, SimplCount, [SimplifierFeedback], ModGuts)
 
-    do_iteration us iteration_no counts_so_far tapes binds rules
+    do_iteration us iteration_no counts_so_far feedback_so_far tapes binds rules
         -- iteration_no is the number of the iteration we are
         -- about to begin, with '1' for the first
       | iteration_no > max_iterations   -- Stop if we've run out of iterations
@@ -602,6 +604,7 @@ simplifyPgmIO pass@(CoreDoSimplify max_iterations tapes mode)
                 -- number of iterations we actually completed
         return ( "Simplifier baled out", iteration_no - 1
                , totalise counts_so_far
+               , feedback_so_far
                , guts { mg_binds = binds, mg_rules = rules } )
 
       -- Try and force thunks off the binds; significantly reduces
@@ -636,7 +639,7 @@ simplifyPgmIO pass@(CoreDoSimplify max_iterations tapes mode)
                 ; fam_envs = (eps_fam_inst_env eps, fam_inst_env) } ;
 
                 -- Simplify the program
-           (env1, counts1) <- initSmpl dflags rule_base2 fam_envs us1 (tapes!! (iteration_no - 1)) sz simpl_binds ;
+           (env1, counts1, feedback) <- initSmpl dflags rule_base2 fam_envs us1 (tapes!! (iteration_no - 1)) sz simpl_binds ;
 
            let  { binds1 = getFloatBinds env1
                 ; rules1 = substRulesForImportedIds (mkCoreSubst (text "imp-rules") env1) rules
@@ -646,6 +649,7 @@ simplifyPgmIO pass@(CoreDoSimplify max_iterations tapes mode)
            if isZeroSimplCount counts1 then
                 return ( "Simplifier reached fixed point", iteration_no
                        , totalise (counts1 : counts_so_far)  -- Include "free" ticks
+                       , feedback_so_far
                        , guts { mg_binds = binds1, mg_rules = rules1 } )
            else do {
                 -- Short out indirections
@@ -662,7 +666,7 @@ simplifyPgmIO pass@(CoreDoSimplify max_iterations tapes mode)
            end_iteration dflags pass iteration_no counts1 binds2 rules1 ;
 
                 -- Loop
-           do_iteration us2 (iteration_no + 1) (counts1:counts_so_far) tapes binds2 rules1
+           do_iteration us2 (iteration_no + 1) (counts1:counts_so_far) (feedback:feedback_so_far) tapes binds2 rules1
            } }
       | otherwise = panic "do_iteration"
       where

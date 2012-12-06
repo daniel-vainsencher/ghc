@@ -40,7 +40,7 @@ module CoreMonad (
     addSimplCount,
     
     -- ** Lifting into the monad
-    liftIO, liftIOWithCount,
+    liftIO, liftIOWithCount, liftIOWithCountAndPass,
     liftIO1, liftIO2, liftIO3, liftIO4,
     
     -- ** Global initialization
@@ -271,11 +271,13 @@ data ActionSpec a = ActionSpec { asSubproblems :: [ActionSpec a]
                                , asNext   :: (ActionSpec a)}
                     | ActionSeqEnd deriving Show
 
-data SimplifierFeedback a
-     = SimplifierFeedback { sfbSubproblemFeedbacks :: [SimplifierFeedback a]
-                          , sfbSimplCounts :: SimplCount
-                          , sfbExprSize :: Int
-                          , sfbActions :: [[a]]}
+data SimplifierFeedback
+     = InProgressFeedback { sfbSubproblemFeedbacks :: [SimplifierFeedback]
+                          , sfbMoreActions :: Bool}
+     | CompleteFeedback { sfbSubproblemFeedbacks :: [SimplifierFeedback]
+                        , sfbSimplCounts :: SimplCount
+                        , sfbExprSize :: Int
+                        , sfbMoreActions :: Bool}
 
 
 \end{code}
@@ -883,6 +885,10 @@ instance MonadIO CoreM where
 -- | Lift an 'IO' operation into 'CoreM' while consuming its 'SimplCount'
 liftIOWithCount :: IO (SimplCount, a) -> CoreM a
 liftIOWithCount what = liftIO what >>= (\(count, x) -> addSimplCount count >> return x)
+
+-- | Lift an 'IO' operation into 'CoreM' while consuming its 'SimplCount'
+liftIOWithCountAndPass :: IO (SimplCount, b, a) -> CoreM (a, b)
+liftIOWithCountAndPass what = liftIO what >>= (\(count, side, x) -> addSimplCount count >> return (x, side))
 
 \end{code}
 

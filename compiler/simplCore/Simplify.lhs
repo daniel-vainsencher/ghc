@@ -1407,7 +1407,6 @@ completeCall env var cont
                interesting_cont = interestingCallContext call_cont
                unfolding    = activeUnfolding env var
                -- Two modes of operation regular vs search. In regular, inlining decisions are made locally, in search an external driver tells us what to do. There is no pipe for external drivers yet.
-               isInlinable  = isCheapUnfolding $ idUnfolding var -- if isCheapUnfolding, then no risk of work duplication; inlining decisions can be rationally made at compile time.
                regular_maybe_inline = callSiteInline dflags var unfolding
                                              lone_variable arg_infos interesting_cont
         ; search_mode <- gotTape
@@ -1419,10 +1418,8 @@ completeCall env var cont
                SuggestInline expr False
                  -> if not search_mode
                    then return Nothing
-		   else do search_should_inline <- if not tapeRemains
-                             then return False
-	        	     else consumeDecision
-			   if search_should_inline
+                   else do search_should_inline <- consumeDecision False
+                           if search_should_inline
                               then do freeTick (InSearchMode ToldYes)
                                       return $ Just expr
                               else do freeTick (InSearchMode ToldNo)
