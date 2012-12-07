@@ -121,9 +121,9 @@ occAnalBind env _ imp_rules_edges (NonRec binder rhs) body_usage
   | isTyVar binder      -- A type let; we don't gather usage info
   = (body_usage, [NonRec binder rhs])
 
-{-  | not (binder `usedIn` body_usage)    -- It's not mentioned
+  | not (binder `usedIn` body_usage)    -- It's not mentioned
   = (body_usage, [])
--}
+
   | otherwise                   -- It's mentioned in the body
   = (body_usage' +++ rhs_usage4, [NonRec tagged_binder rhs'])
   where
