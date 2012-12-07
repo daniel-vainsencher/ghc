@@ -192,8 +192,8 @@ tapeLeft = SM (\_st_env us tape fb sc -> case tape of
                        Just ActionSpec {} -> return (True, us, tape, fb, sc)
                        _                  -> return (False, us, tape, fb, sc))
 
-simplifyInIsolation :: SimplM a -> SimplM a
-simplifyInIsolation = undefined
+inIsolation :: SimplM a -> SimplM a
+inIsolation = undefined
 
 
 \end{code}
