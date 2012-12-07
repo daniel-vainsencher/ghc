@@ -121,9 +121,9 @@ occAnalBind env _ imp_rules_edges (NonRec binder rhs) body_usage
   | isTyVar binder      -- A type let; we don't gather usage info
   = (body_usage, [NonRec binder rhs])
 
-  | not (binder `usedIn` body_usage)    -- It's not mentioned
+{-  | not (binder `usedIn` body_usage)    -- It's not mentioned
   = (body_usage, [])
-
+-}
   | otherwise                   -- It's mentioned in the body
   = (body_usage' +++ rhs_usage4, [NonRec tagged_binder rhs'])
   where
@@ -710,11 +710,8 @@ occAnalRec :: SCC (Node Details)
         -- The NonRec case is just like a Let (NonRec ...) above
 occAnalRec (AcyclicSCC (ND { nd_bndr = bndr, nd_rhs = rhs, nd_uds = rhs_uds}, _, _))
            (body_uds, binds)
-  | not (bndr `usedIn` body_uds)
-  = (body_uds, binds)
-
   | otherwise                   -- It's mentioned in the body
-  = (body_uds' +++ rhs_uds,
+  = (body_uds' +++ rhs_uds,	
      NonRec tagged_bndr rhs : binds)
   where
     (body_uds', tagged_bndr) = tagBinder body_uds bndr

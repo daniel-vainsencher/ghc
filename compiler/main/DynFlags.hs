@@ -22,7 +22,7 @@ module DynFlags (
         FatalMessager, LogAction, FlushOut(..), FlushErr(..),
         ProfAuto(..),
         glasgowExtsFlags,
-        dopt,
+        dopt, dopt_set, dopt_unset,
         gopt, gopt_set, gopt_unset,
         wopt, wopt_set, wopt_unset,
         xopt, xopt_set, xopt_unset,
@@ -746,6 +746,7 @@ data Settings = Settings {
   -- options for particular phases
   sOpt_L                 :: [String],
   sOpt_P                 :: [String],
+  sUseTape               :: String,
   sOpt_F                 :: [String],
   sOpt_c                 :: [String],
   sOpt_a                 :: [String],
@@ -1406,6 +1407,10 @@ dopt f dflags = (fromEnum f `IntSet.member` dumpFlags dflags)
 dopt_set :: DynFlags -> DumpFlag -> DynFlags
 dopt_set dfs f = dfs{ dumpFlags = IntSet.insert (fromEnum f) (dumpFlags dfs) }
 
+-- | Unset a 'DumpFlag'
+dopt_unset :: DynFlags -> DumpFlag -> DynFlags
+dopt_unset dfs f = dfs{ dumpFlags = IntSet.delete (fromEnum f) (dumpFlags dfs) }
+
 -- | Test whether a 'GeneralFlag' is set
 gopt :: GeneralFlag -> DynFlags -> Bool
 gopt f dflags  = fromEnum f `IntSet.member` generalFlags dflags
@@ -1888,6 +1893,7 @@ dynamic_flags = [
     -- need to appear before -pgmL to be parsed as LLVM flags.
   , Flag "pgmlo"          (hasArg (\f -> alterSettings (\s -> s { sPgm_lo  = (f,[])})))
   , Flag "pgmlc"          (hasArg (\f -> alterSettings (\s -> s { sPgm_lc  = (f,[])})))
+  , Flag "fUseTape"       (hasArg (\f -> alterSettings (\s -> s { sUseTape = f})))
   , Flag "pgmL"           (hasArg (\f -> alterSettings (\s -> s { sPgm_L   = f})))
   , Flag "pgmP"           (hasArg setPgmP)
   , Flag "pgmF"           (hasArg (\f -> alterSettings (\s -> s { sPgm_F   = f})))

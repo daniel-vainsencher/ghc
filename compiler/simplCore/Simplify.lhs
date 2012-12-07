@@ -24,7 +24,7 @@ import Coercion hiding  ( substCo, substTy, substCoVar, extendTvSubst )
 import OptCoercion      ( optCoercion )
 import FamInstEnv       ( topNormaliseType )
 import DataCon          ( DataCon, dataConWorkId, dataConRepStrictness )
-import CoreMonad        ( Tick(..), SimplifierMode(..) )
+import CoreMonad        ( Tick(..), SimplifierMode(..), DrivenCallSiteInlineResult(..) )
 import CoreSyn
 import Demand           ( isStrictDmd, StrictSig(..), dmdTypeDepth )
 import PprCore          ( pprParendExpr, pprCoreExpr )
@@ -377,8 +377,9 @@ simplNonRecX :: SimplEnv
 
 simplNonRecX env bndr new_rhs
   | isDeadBinder bndr   -- Not uncommon; e.g. case (a,b) of c { (p,q) -> p }
-  = return env          --               Here c is dead, and we avoid creating
-                        --               the binding c = (a,b)
+  = do 		 	-- Here c is dead, and we avoid creating
+       checkedTick (DeadBindingElim bndr)
+       return env       -- the binding c = (a,b)
   | Coercion co <- new_rhs
   = return (extendCvSubst env bndr co)
   | otherwise           --               the binding b = (a,b)
@@ -912,6 +913,7 @@ simplExprF env e cont
       ]) $ -}
     simplExprF1 env e cont
 
+
 simplExprF1 :: SimplEnv -> InExpr -> SimplCont
             -> SimplM (SimplEnv, OutExpr)
 simplExprF1 env (Var v)        cont = simplIdF env v cont
@@ -1404,8 +1406,25 @@ completeCall env var cont
                n_val_args = length arg_infos
                interesting_cont = interestingCallContext call_cont
                unfolding    = activeUnfolding env var
-               maybe_inline = callSiteInline dflags var unfolding
+               -- Two modes of operation regular vs search. In regular, inlining decisions are made locally, in search an external driver tells us what to do. There is no pipe for external drivers yet.
+               regular_maybe_inline = callSiteInline dflags var unfolding
                                              lone_variable arg_infos interesting_cont
+        ; search_mode <- gotTape
+        ; tapeRemains <- tapeLeft
+	; maybe_inline <- case regular_maybe_inline of
+               MustInline expr -> return $ Just expr
+               CannotInline    -> return Nothing
+               SuggestInline expr True -> return $ Just expr
+               SuggestInline expr False
+                 -> if not search_mode
+                   then return Nothing
+                   else do search_should_inline <- consumeDecision False
+                           if search_should_inline
+                              then do freeTick (InSearchMode ToldYes)
+                                      return $ Just expr
+                              else do freeTick (InSearchMode ToldNo)
+                                      return Nothing
+
         ; case maybe_inline of {
             Just expr      -- There is an inlining!
               ->  do { checkedTick (UnfoldingDone var)

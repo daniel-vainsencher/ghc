@@ -15,7 +15,7 @@
 
 module CoreMonad (
     -- * Configuration of the core-to-core passes
-    CoreToDo(..), runWhen, runMaybe,
+    CoreToDo(..), MTape, SearchTapeElement, ActionSpec(..), SimplifierFeedback(..), runWhen, runMaybe,
     SimplifierMode(..),
     FloatOutSwitches(..),
     dumpSimplPhase, pprPassDetails, 
@@ -27,7 +27,7 @@ module CoreMonad (
     -- * Counting
     SimplCount, doSimplTick, doFreeSimplTick, simplCountN,
     pprSimplCount, plusSimplCount, zeroSimplCount, 
-    isZeroSimplCount, hasDetailedCounts, Tick(..),
+    isZeroSimplCount, hasDetailedCounts, Tick(..), getTickCount, computeScore, DrivenCallSiteInlineResult(..),
 
     -- * The monad
     CoreM, runCoreM,
@@ -40,7 +40,7 @@ module CoreMonad (
     addSimplCount,
     
     -- ** Lifting into the monad
-    liftIO, liftIOWithCount,
+    liftIO, liftIOWithCount, liftIOWithCountAndPass,
     liftIO1, liftIO2, liftIO3, liftIO4,
     
     -- ** Global initialization
@@ -217,7 +217,7 @@ displayLintResults dflags pass warns errs binds
 showLintWarnings :: CoreToDo -> Bool
 -- Disable Lint warnings on the first simplifier pass, because
 -- there may be some INLINE knots still tied, which is tiresomely noisy
-showLintWarnings (CoreDoSimplify _ (SimplMode { sm_phase = InitialPhase })) = False
+showLintWarnings (CoreDoSimplify _ _ (SimplMode { sm_phase = InitialPhase })) = False
 showLintWarnings _ = True
 \end{code}
 
@@ -230,13 +230,13 @@ showLintWarnings _ = True
 %************************************************************************
 
 \begin{code}
-
 data CoreToDo           -- These are diff core-to-core passes,
                         -- which may be invoked in any order,
                         -- as many times as you like.
 
   = CoreDoSimplify      -- The core-to-core simplifier.
         Int                    -- Max iterations
+        [MTape]                -- Tape to use, or Nothing
         SimplifierMode
   | CoreDoPluginPass String PluginPass
   | CoreDoFloatInwards
@@ -261,6 +261,24 @@ data CoreToDo           -- These are diff core-to-core passes,
 
   | CoreTidy
   | CorePrep
+
+-- | Used to drive the simplifier
+type SearchTapeElement = Bool
+type MTape = Maybe (ActionSpec SearchTapeElement)
+
+data ActionSpec a = ActionSpec { asSubproblems :: [ActionSpec a]
+                               , asAction :: a
+                               , asNext   :: (ActionSpec a)}
+                    | ActionSeqEnd deriving Show
+
+data SimplifierFeedback
+     = InProgressFeedback { sfbSubproblemFeedbacks :: [SimplifierFeedback]
+                          , sfbMoreActions :: Bool}
+     | CompleteFeedback { sfbSubproblemFeedbacks :: [SimplifierFeedback]
+                        , sfbSimplCounts :: SimplCount
+                        , sfbExprSize :: Int
+                        , sfbMoreActions :: Bool}
+
 
 \end{code}
 
@@ -289,7 +307,7 @@ coreDumpFlag CoreDoNothing           = Nothing
 coreDumpFlag (CoreDoPasses {})       = Nothing
 
 instance Outputable CoreToDo where
-  ppr (CoreDoSimplify _ _)     = ptext (sLit "Simplifier")
+  ppr (CoreDoSimplify _ _  _)     = ptext (sLit "Simplifier")
   ppr (CoreDoPluginPass s _)   = ptext (sLit "Core plugin: ") <+> text s
   ppr CoreDoFloatInwards       = ptext (sLit "Float inwards")
   ppr (CoreDoFloatOutwards f)  = ptext (sLit "Float out") <> parens (ppr f)
@@ -311,7 +329,7 @@ instance Outputable CoreToDo where
   ppr (CoreDoPasses {})        = ptext (sLit "CoreDoPasses")
 
 pprPassDetails :: CoreToDo -> SDoc
-pprPassDetails (CoreDoSimplify n md) = vcat [ ptext (sLit "Max iterations =") <+> int n 
+pprPassDetails (CoreDoSimplify n _ md) = vcat [ ptext (sLit "Max iterations =") <+> int n
                                             , ppr md ]
 pprPassDetails _ = empty
 \end{code}
@@ -519,6 +537,15 @@ zeroSimplCount dflags
 isZeroSimplCount (VerySimplCount n)    	    = n==0
 isZeroSimplCount (SimplCount { ticks = n }) = n==0
 
+getTickCount SimplCount {details = det} tick
+  = Map.findWithDefault 0 tick det
+getSimplCount _ _ = error "VerySimplCounts cannot answer detailed queries"
+
+computeScore :: SimplCount -> (Tick -> Float) -> Float
+computeScore (VerySimplCount _) _ = error "VerySimplCounts cannot answer detailed queries"
+computeScore (SimplCount {details = counts }) f
+  = sum $ map (\ (t,c) -> (fromIntegral c) * (f t) ) $ Map.toList counts
+
 hasDetailedCounts (VerySimplCount {}) = False
 hasDetailedCounts (SimplCount {})     = True
 
@@ -611,9 +638,13 @@ data Tick
   | CaseElim			Id	-- Case binder
   | CaseIdentity		Id	-- Case binder
   | FillInCaseDefault		Id	-- Case binder
+  | DeadBindingElim		Id
+  | InSearchMode                DrivenCallSiteInlineResult
 
   | BottomFound		
   | SimplifierDone		-- Ticked at each iteration of the simplifier
+
+data DrivenCallSiteInlineResult = NotInlinable | ToldNo | ToldYes deriving (Show, Eq, Ord)
 
 instance Outputable Tick where
   ppr tick = text (tickString tick) <+> pprTickCts tick
@@ -644,6 +675,8 @@ tickToTag (FillInCaseDefault _)		= 13
 tickToTag BottomFound			= 14
 tickToTag SimplifierDone		= 16
 tickToTag (AltMerge _)			= 17
+tickToTag (DeadBindingElim _)           = 18
+tickToTag (InSearchMode _)              = 19
 
 tickString :: Tick -> String
 tickString (PreInlineUnconditionally _)	= "PreInlineUnconditionally"
@@ -663,6 +696,8 @@ tickString (CaseIdentity _)		= "CaseIdentity"
 tickString (FillInCaseDefault _)	= "FillInCaseDefault"
 tickString BottomFound			= "BottomFound"
 tickString SimplifierDone		= "SimplifierDone"
+tickString (DeadBindingElim _)          = "DeadBindingElim"
+tickString (InSearchMode _)             = "InSearchMode"
 
 pprTickCts :: Tick -> SDoc
 pprTickCts (PreInlineUnconditionally v)	= ppr v
@@ -678,8 +713,10 @@ pprTickCts (KnownBranch v)		= ppr v
 pprTickCts (CaseMerge v)		= ppr v
 pprTickCts (AltMerge v)			= ppr v
 pprTickCts (CaseElim v)			= ppr v
-pprTickCts (CaseIdentity v)		= ppr v
-pprTickCts (FillInCaseDefault v)	= ppr v
+pprTickCts (CaseIdentity v)             = ppr v
+pprTickCts (FillInCaseDefault v)        = ppr v
+pprTickCts (DeadBindingElim v)          = ppr v
+pprTickCts (InSearchMode x)          = ppr $ show x
 pprTickCts _    			= empty
 
 cmpTick :: Tick -> Tick -> Ordering
@@ -702,8 +739,10 @@ cmpEqTick (CaseMerge a)			(CaseMerge b)			= a `compare` b
 cmpEqTick (AltMerge a)			(AltMerge b)			= a `compare` b
 cmpEqTick (CaseElim a)			(CaseElim b)			= a `compare` b
 cmpEqTick (CaseIdentity a)		(CaseIdentity b)		= a `compare` b
-cmpEqTick (FillInCaseDefault a)		(FillInCaseDefault b)		= a `compare` b
-cmpEqTick _     			_     				= EQ
+cmpEqTick (FillInCaseDefault a)         (FillInCaseDefault b)           = a `compare` b
+cmpEqTick (DeadBindingElim a)           (DeadBindingElim b)             = a `compare` b
+cmpEqTick (InSearchMode a)              (InSearchMode b)                = a `compare` b
+cmpEqTick _                             _                               = EQ
 \end{code}
 
 
@@ -846,6 +885,10 @@ instance MonadIO CoreM where
 -- | Lift an 'IO' operation into 'CoreM' while consuming its 'SimplCount'
 liftIOWithCount :: IO (SimplCount, a) -> CoreM a
 liftIOWithCount what = liftIO what >>= (\(count, x) -> addSimplCount count >> return x)
+
+-- | Lift an 'IO' operation into 'CoreM' while consuming its 'SimplCount'
+liftIOWithCountAndPass :: IO (SimplCount, b, a) -> CoreM (a, b)
+liftIOWithCountAndPass what = liftIO what >>= (\(count, side, x) -> addSimplCount count >> return (x, side))
 
 \end{code}
 
