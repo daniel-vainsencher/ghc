@@ -27,7 +27,7 @@ module CoreMonad (
     -- * Counting
     SimplCount, doSimplTick, doFreeSimplTick, simplCountN,
     pprSimplCount, plusSimplCount, zeroSimplCount, 
-    isZeroSimplCount, hasDetailedCounts, Tick(..), getTickCount, computeScore, DrivenCallSiteInlineResult(..),
+    isZeroSimplCount, hasDetailedCounts, Tick(..), computeScore, DrivenCallSiteInlineResult(..),
 
     -- * The monad
     CoreM, runCoreM,
@@ -536,10 +536,6 @@ zeroSimplCount dflags
 
 isZeroSimplCount (VerySimplCount n)    	    = n==0
 isZeroSimplCount (SimplCount { ticks = n }) = n==0
-
-getTickCount SimplCount {details = det} tick
-  = Map.findWithDefault 0 tick det
-getSimplCount _ _ = error "VerySimplCounts cannot answer detailed queries"
 
 computeScore :: SimplCount -> (Tick -> Float) -> Float
 computeScore (VerySimplCount _) _ = error "VerySimplCounts cannot answer detailed queries"
