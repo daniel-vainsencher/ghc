@@ -377,7 +377,7 @@ simplNonRecX :: SimplEnv
 
 simplNonRecX env bndr new_rhs
   | isDeadBinder bndr   -- Not uncommon; e.g. case (a,b) of c { (p,q) -> p }
-  = do 		 	-- Here c is dead, and we avoid creating
+  = do                  -- Here c is dead, and we avoid creating
        checkedTick (DeadBindingElim bndr)
        return env       -- the binding c = (a,b)
   | Coercion co <- new_rhs
@@ -1410,8 +1410,7 @@ completeCall env var cont
                regular_maybe_inline = callSiteInline dflags var unfolding
                                              lone_variable arg_infos interesting_cont
         ; search_mode <- gotTape
-        ; tapeRemains <- tapeLeft
-	; maybe_inline <- case regular_maybe_inline of
+        ; maybe_inline <- case regular_maybe_inline of
                MustInline expr -> return $ Just expr
                CannotInline    -> return Nothing
                SuggestInline expr True -> return $ Just expr

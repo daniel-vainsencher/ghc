@@ -14,8 +14,6 @@
 module SimplCore ( core2core, simplifyExpr, simplifyPgm ) where
 
 #include "HsVersions.h"
-import Data.List
-import Data.Char
 import DynFlags
 import CoreSyn
 import CoreSubst

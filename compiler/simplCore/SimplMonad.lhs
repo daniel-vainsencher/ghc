@@ -8,7 +8,8 @@ module SimplMonad (
         -- The monad
         SimplM,
         initSmpl,
-        getSimplRules, getFamEnvs,
+        getSimplRules, getFamEnvs, 
+        inIsolation,
 
         -- Unique supply
         MonadUnique(..), newId,

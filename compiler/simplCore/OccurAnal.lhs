@@ -711,7 +711,7 @@ occAnalRec :: SCC (Node Details)
 occAnalRec (AcyclicSCC (ND { nd_bndr = bndr, nd_rhs = rhs, nd_uds = rhs_uds}, _, _))
            (body_uds, binds)
   | otherwise                   -- It's mentioned in the body
-  = (body_uds' +++ rhs_uds,	
+  = (body_uds' +++ rhs_uds,
      NonRec tagged_bndr rhs : binds)
   where
     (body_uds', tagged_bndr) = tagBinder body_uds bndr
