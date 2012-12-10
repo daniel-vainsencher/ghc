@@ -13,8 +13,10 @@ module SimplMonad (
 
         -- Unique supply
         MonadUnique(..), newId,
-        -- Tape access
+
+        -- Tape access and feedback
         gotTape, tapeLeft, consumeDecision,
+        SimplifierFeedback(..), completeFeedback,
 
         -- Counting
         SimplCount, tick, freeTick, checkedTick,
@@ -179,7 +181,7 @@ newId fs ty = do uniq <- getUniqueM
 consumeDecision :: SearchTapeElement -> SimplM SearchTapeElement
 consumeDecision def = SM (\_st_env us tape oldfb sc -> case tape of
                                    Just ActionSpec {asAction = a, asNext = n}
-                                        -> return (a, us, Just n, oldfb, sc)
+                                        -> return (a, us, Just n, nextFeedback a oldfb, sc)
                                    t    -> return (def, us, t, oldfb {sfbMoreActions = True}, sc))
 
 gotTape :: SimplM Bool
@@ -194,6 +196,46 @@ tapeLeft = SM (\_st_env us tape fb sc -> case tape of
 
 inIsolation :: SimplM a -> SimplM a
 inIsolation = undefined
+
+data SimplifierFeedback
+     = CompleteSFeedback { sfbSubproblemFeedbacks :: [SimplifierFeedback]
+                         , sfbSimplCounts :: SimplCount
+                         , sfbExprSize :: Int
+                         , sfbMoreActions :: Bool
+                         , sfbPrevious :: Maybe SimplifierFeedback}
+       | InProgressSFeedback { sfbSubproblemFeedbacks :: [SimplifierFeedback]
+                             , sfbMoreActions :: Bool
+                             , sfbPrevious :: Maybe SimplifierFeedback}
+       | ClosedSFeedback { sfbSubproblemFeedbacks :: [SimplifierFeedback]
+                         , sfbActionTaken :: Bool
+                         , sfbPrevious :: Maybe SimplifierFeedback}
+
+nextFeedback :: Bool -> SimplifierFeedback -> SimplifierFeedback
+nextFeedback action InProgressSFeedback
+                    { sfbSubproblemFeedbacks = subfb
+                    , sfbPrevious = prev}
+  = let cl = ClosedSFeedback { sfbSubproblemFeedbacks = reverse subfb
+                             , sfbActionTaken = action
+                             , sfbPrevious = prev}
+    in InProgressSFeedback { sfbSubproblemFeedbacks = []
+                           , sfbMoreActions = False
+                           , sfbPrevious = Just cl}
+
+nextFeedback _ _ = error "A feedback that is not in progress should never be closed."
+
+
+completeFeedback :: SimplCount -> Int -> SimplifierFeedback -> SimplifierFeedback
+completeFeedback counts exprSize InProgressSFeedback
+                               { sfbSubproblemFeedbacks = subfb
+                               , sfbMoreActions = more
+                               , sfbPrevious = prev}
+  = CompleteSFeedback { sfbSubproblemFeedbacks = reverse subfb
+                      , sfbSimplCounts = counts
+                      , sfbExprSize = exprSize
+                      , sfbMoreActions = more
+                      , sfbPrevious = prev}
+
+completeFeedback _ _ _ = error "A feedback that is not in progress should never be closed."
 
 
 \end{code}

@@ -15,7 +15,7 @@
 
 module CoreMonad (
     -- * Configuration of the core-to-core passes
-    CoreToDo(..), MTape, SearchTapeElement, ActionSpec(..), SimplifierFeedback(..), closeFeedback, runWhen, runMaybe,
+    CoreToDo(..), MTape, SearchTapeElement, ActionSpec(..), runWhen, runMaybe,
     SimplifierMode(..),
     FloatOutSwitches(..),
     dumpSimplPhase, pprPassDetails, 
@@ -270,35 +270,6 @@ data ActionSpec a = ActionSpec { asSubproblems :: [ActionSpec a]
                                , asAction :: a
                                , asNext   :: (ActionSpec a)}
                     | ActionSeqEnd deriving Show
-
-
-data SimplifierFeedback
-     = CompleteSFeedback { sfbSubproblemFeedbacks :: [SimplifierFeedback]
-                         , sfbSimplCounts :: SimplCount
-                         , sfbExprSize :: Int
-                         , sfbMoreActions :: Bool
-                         , sfbPrevious :: Maybe SimplifierFeedback}
-       | InProgressSFeedback { sfbSubproblemFeedbacks :: [SimplifierFeedback]
-                             , sfbMoreActions :: Bool
-                             , sfbPrevious :: Maybe SimplifierFeedback}
-       | ClosedSFeedback { sfbSubproblemFeedbacks :: [SimplifierFeedback]
-                         , sfbActionTaken :: Bool
-                         , sfbPrevious :: Maybe SimplifierFeedback}
-
-
-
-closeFeedback :: SimplCount -> Int -> SimplifierFeedback -> SimplifierFeedback
-closeFeedback counts exprSize InProgressSFeedback
-                               { sfbSubproblemFeedbacks = subfb
-                               , sfbMoreActions = more
-                               , sfbPrevious = prev}
-  = CompleteSFeedback { sfbSubproblemFeedbacks = reverse subfb
-                      , sfbSimplCounts = counts
-                      , sfbExprSize = exprSize
-                      , sfbMoreActions = more
-                      , sfbPrevious = prev}
-
-closeFeedback _ _ _ = error "A feedback that is not in progress should never be closed."
 
 \end{code}
 
