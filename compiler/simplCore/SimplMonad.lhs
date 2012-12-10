@@ -180,7 +180,7 @@ newId fs ty = do uniq <- getUniqueM
 \begin{code}
 consumeDecision :: SearchTapeElement -> SimplM SearchTapeElement
 consumeDecision def = SM (\_st_env us tape oldfb sc -> case tape of
-                                   Just ActionSpec {asAction = a, asNext = n}
+                                   Just ActionSpec {asAction = Just a, asNext = n}
                                         -> return (a, us, Just n, nextFeedback a oldfb, sc)
                                    t    -> return (def, us, t, oldfb {sfbMoreActions = True}, sc))
 

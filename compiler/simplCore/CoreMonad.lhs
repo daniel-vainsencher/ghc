@@ -267,7 +267,7 @@ type SearchTapeElement = Bool
 type MTape = Maybe (ActionSpec SearchTapeElement)
 
 data ActionSpec a = ActionSpec { asSubproblems :: [ActionSpec a]
-                               , asAction :: a
+                               , asAction :: Maybe a
                                , asNext   :: (ActionSpec a)}
                     | ActionSeqEnd deriving Show
 
