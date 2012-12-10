@@ -271,14 +271,19 @@ data ActionSpec a = ActionSpec { asSubproblems :: [ActionSpec a]
                                , asNext   :: (ActionSpec a)}
                     | ActionSeqEnd deriving Show
 
+
+-- These could be separate datatypes, which would be safer.
 data SimplifierFeedback
-     = InProgressFeedback { sfbSubproblemFeedbacks :: [SimplifierFeedback]
-                          , sfbMoreActions :: Bool}
-     | CompleteFeedback { sfbSubproblemFeedbacks :: [SimplifierFeedback]
+     = CompleteFeedback { sfbSubproblemFeedbacks :: [SimplifierFeedback]
                         , sfbSimplCounts :: SimplCount
                         , sfbExprSize :: Int
-                        , sfbMoreActions :: Bool}
-
+                        , sfbMoreActions :: Bool
+                        , sfbPrevious :: Maybe SimplifierFeedback}
+       | InProgressFeedback { sfbSubproblemFeedbacks :: [SimplifierFeedback]
+                            , sfbMoreActions :: Bool
+                            , sfbPrevious :: Maybe SimplifierFeedback}
+       | Closed { sfbSubproblemFeedbacks :: [SimplifierFeedback]
+                , sfbPrevious :: Maybe SimplifierFeedback}
 
 \end{code}
 
