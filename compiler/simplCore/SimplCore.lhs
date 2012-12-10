@@ -647,7 +647,7 @@ simplifyPgmIO pass@(CoreDoSimplify max_iterations tapes mode)
            if isZeroSimplCount counts1 then
                 return ( "Simplifier reached fixed point", iteration_no
                        , totalise (counts1 : counts_so_far)  -- Include "free" ticks
-                       , feedback_so_far
+                       , (feedback : feedback_so_far)
                        , guts { mg_binds = binds1, mg_rules = rules1 } )
            else do {
                 -- Short out indirections
