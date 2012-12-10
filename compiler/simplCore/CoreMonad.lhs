@@ -15,7 +15,7 @@
 
 module CoreMonad (
     -- * Configuration of the core-to-core passes
-    CoreToDo(..), MTape, SearchTapeElement, ActionSpec(..), SimplifierFeedback(..), runWhen, runMaybe,
+    CoreToDo(..), MTape, SearchTapeElement, ActionSpec(..), SimplifierFeedback(..), closeFeedback, runWhen, runMaybe,
     SimplifierMode(..),
     FloatOutSwitches(..),
     dumpSimplPhase, pprPassDetails, 
@@ -272,18 +272,33 @@ data ActionSpec a = ActionSpec { asSubproblems :: [ActionSpec a]
                     | ActionSeqEnd deriving Show
 
 
--- These could be separate datatypes, which would be safer.
 data SimplifierFeedback
-     = CompleteFeedback { sfbSubproblemFeedbacks :: [SimplifierFeedback]
-                        , sfbSimplCounts :: SimplCount
-                        , sfbExprSize :: Int
-                        , sfbMoreActions :: Bool
-                        , sfbPrevious :: Maybe SimplifierFeedback}
-       | InProgressFeedback { sfbSubproblemFeedbacks :: [SimplifierFeedback]
-                            , sfbMoreActions :: Bool
-                            , sfbPrevious :: Maybe SimplifierFeedback}
-       | Closed { sfbSubproblemFeedbacks :: [SimplifierFeedback]
-                , sfbPrevious :: Maybe SimplifierFeedback}
+     = CompleteSFeedback { sfbSubproblemFeedbacks :: [SimplifierFeedback]
+                         , sfbSimplCounts :: SimplCount
+                         , sfbExprSize :: Int
+                         , sfbMoreActions :: Bool
+                         , sfbPrevious :: Maybe SimplifierFeedback}
+       | InProgressSFeedback { sfbSubproblemFeedbacks :: [SimplifierFeedback]
+                             , sfbMoreActions :: Bool
+                             , sfbPrevious :: Maybe SimplifierFeedback}
+       | ClosedSFeedback { sfbSubproblemFeedbacks :: [SimplifierFeedback]
+                         , sfbActionTaken :: Bool
+                         , sfbPrevious :: Maybe SimplifierFeedback}
+
+
+
+closeFeedback :: SimplCount -> Int -> SimplifierFeedback -> SimplifierFeedback
+closeFeedback counts exprSize InProgressSFeedback
+                               { sfbSubproblemFeedbacks = subfb
+                               , sfbMoreActions = more
+                               , sfbPrevious = prev}
+  = CompleteSFeedback { sfbSubproblemFeedbacks = reverse subfb
+                      , sfbSimplCounts = counts
+                      , sfbExprSize = exprSize
+                      , sfbMoreActions = more
+                      , sfbPrevious = prev}
+
+closeFeedback _ _ _ = error "A feedback that is not in progress should never be closed."
 
 \end{code}
 

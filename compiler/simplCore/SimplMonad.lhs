@@ -72,7 +72,7 @@ initSmpl :: DynFlags -> RuleBase -> (FamInstEnv, FamInstEnv)
          -> IO (a, SimplCount, SimplifierFeedback)
 
 initSmpl dflags rules fam_envs us tape size m
-  = do (result, _, _, feedback, count) <- unSM m env us tape (InProgressFeedback [] False Nothing) (zeroSimplCount dflags)
+  = do (result, _, _, feedback, count) <- unSM m env us tape (InProgressSFeedback [] False Nothing) (zeroSimplCount dflags)
        return (result, count, feedback)
   where
     env = STE { st_flags = dflags, st_rules = rules
