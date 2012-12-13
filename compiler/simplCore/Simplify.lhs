@@ -342,7 +342,7 @@ simplLazyBind env top_lvl is_rec bndr bndr1 rhs rhs_se
         -- Simplify the RHS
         ; let   body_out_ty :: OutType
                 body_out_ty = substTy body_env (exprType body)
-        ; (body_env1, body1) <- simplExprF body_env body (mkRhsStop body_out_ty)
+        ; (body_env1, body1) <- simplifyAsSubproblem $ simplExprF body_env body (mkRhsStop body_out_ty)
         -- ANF-ise a constructor or PAP rhs
         ; (body_env2, body2) <- prepareRhs top_lvl body_env1 bndr1 body1
 
@@ -362,8 +362,8 @@ simplLazyBind env top_lvl is_rec bndr bndr1 rhs rhs_se
                         ; rhs' <- mkLam env tvs' body3
                         ; env' <- foldlM (addPolyBind top_lvl) env poly_binds
                         ; return (env', rhs') }
-
-        ; completeBind env' top_lvl bndr bndr1 rhs' }
+        ; let adapted_rhs = substExpr (text "") rhs_se rhs
+        ; completeBind env' top_lvl bndr bndr1 rhs' adapted_rhs }
 \end{code}
 
 A specialised variant of simplNonRec used when the RHS is already simplified,
@@ -401,7 +401,7 @@ completeNonRecX top_lvl env is_strict old_bndr new_bndr new_rhs
                 then do { tick LetFloatFromLet
                         ; return (addFloats env env1, rhs1) }   -- Add the floats to the main env
                 else return (env, wrapFloats env1 rhs1)         -- Wrap the floats around the RHS
-        ; completeBind env2 NotTopLevel old_bndr new_bndr rhs2 }
+        ; completeBind env2 NotTopLevel old_bndr new_bndr rhs2 rhs2}
 \end{code}
 
 {- No, no, no!  Do not try preInlineUnconditionally in completeNonRecX
@@ -631,12 +631,13 @@ completeBind :: SimplEnv
              -> TopLevelFlag            -- Flag stuck into unfolding
              -> InId                    -- Old binder
              -> OutId -> OutExpr        -- New binder and RHS
+             -> OutExpr                 -- Adapted but unsimplified RHS.
              -> SimplM SimplEnv
 -- completeBind may choose to do its work
 --      * by extending the substitution (e.g. let x = y in ...)
 --      * or by adding to the floats in the envt
 
-completeBind env top_lvl old_bndr new_bndr new_rhs
+completeBind env top_lvl old_bndr new_bndr new_rhs adapted_old_rhs
  | isCoVar old_bndr
  = case new_rhs of
      Coercion co -> return (extendCvSubst env old_bndr co)
@@ -650,34 +651,35 @@ completeBind env top_lvl old_bndr new_bndr new_rhs
 
         -- Do eta-expansion on the RHS of the binding
         -- See Note [Eta-expanding at let bindings] in SimplUtils
-      ; (new_arity, final_rhs) <- tryEtaExpand env new_bndr new_rhs
-
+      ; (_, final_rhs) <- tryEtaExpand env new_bndr new_rhs
         -- Simplify the unfolding
-      ; new_unfolding <- simplUnfolding env top_lvl old_bndr final_rhs old_unf
+      ; adapted_old_unfolding <- simplUnfolding env top_lvl old_bndr 
+                                                adapted_old_rhs old_unf
 
       ; dflags <- getDynFlags
       ; if postInlineUnconditionally dflags env top_lvl new_bndr occ_info
-                                     final_rhs new_unfolding
+                                     adapted_old_rhs adapted_old_unfolding
 
                         -- Inline and discard the binding
         then do  { tick (PostInlineUnconditionally old_bndr)
-                 ; return (extendIdSubst env old_bndr (DoneEx final_rhs)) }
+                 ; return (extendIdSubst env old_bndr (DoneEx adapted_old_rhs)) }
                 -- Use the substitution to make quite, quite sure that the
                 -- substitution will happen, since we are going to discard the binding
         else
-   do { let info1 = idInfo new_bndr `setArityInfo` new_arity
+   do { let old_arity = exprArity adapted_old_rhs
+            info1 = idInfo new_bndr `setArityInfo` old_arity
 
               -- Unfolding info: Note [Setting the new unfolding]
-            info2 = info1 `setUnfoldingInfo` new_unfolding
+            info2 = info1 `setUnfoldingInfo` adapted_old_unfolding
 
               -- Demand info: Note [Setting the demand info]
               --
               -- We also have to nuke demand info if for some reason
               -- eta-expansion *reduces* the arity of the binding to less
               -- than that of the strictness sig. This can happen: see Note [Arity decrease].
-            info3 | isEvaldUnfolding new_unfolding
+            info3 | isEvaldUnfolding adapted_old_unfolding
                     || (case strictnessInfo info2 of
-                          Just (StrictSig dmd_ty) -> new_arity < dmdTypeDepth dmd_ty
+                          Just (StrictSig dmd_ty) -> old_arity < dmdTypeDepth dmd_ty
                           Nothing                 -> False)
                   = zapDemandInfo info2 `orElse` info2
                   | otherwise

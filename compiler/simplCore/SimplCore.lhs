@@ -141,7 +141,6 @@ getCoreToDo dflags
                           , sm_eta_expand = eta_expand_on
                           , sm_inline     = True
                           , sm_case_case  = True }
-    -- Interpret "yyyNNynyN" as one tape with three inlines and an infinity of refusals, one missing tape (Nothing), and one [True False True] ++ repeat False.
 
     simpl_phase phase names iter
       = CoreDoPasses

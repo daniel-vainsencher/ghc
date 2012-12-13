@@ -9,7 +9,6 @@ module SimplMonad (
         SimplM,
         initSmpl,
         getSimplRules, getFamEnvs, 
-        inIsolation,
 
         -- Unique supply
         MonadUnique(..), newId,
@@ -17,6 +16,7 @@ module SimplMonad (
         -- Tape access and feedback
         gotTape, tapeLeft, consumeDecision,
         SimplifierFeedback(..), completeFeedback,
+        simplifyAsSubproblem,
 
         -- Counting
         SimplCount, tick, freeTick, checkedTick,
@@ -34,6 +34,11 @@ import CoreMonad
 import Outputable
 import FastString
 import MonadUtils
+
+-- Just for the strangely concrete simplifyAsSubproblem.
+import CoreSyn          (CoreExpr)
+import CoreUtils        (exprSize)
+
 \end{code}
 
 %************************************************************************
@@ -180,9 +185,14 @@ newId fs ty = do uniq <- getUniqueM
 \begin{code}
 consumeDecision :: SearchTapeElement -> SimplM SearchTapeElement
 consumeDecision def = SM (\_st_env us tape oldfb sc -> case tape of
-                                   Just ActionSpec {asAction = Just a, asNext = n}
-                                        -> return (a, us, Just n, nextFeedback a oldfb, sc)
-                                   t    -> return (def, us, t, oldfb {sfbMoreActions = True}, sc))
+  Just ActionSpec {asAction = Just a, asNext = n}
+    -> return (a, us, Just n, nextFeedback a oldfb, sc)
+  Just ActionSpec {asAction = Nothing}
+    -> error "We should not consume tape where before no actions were available."
+  Just ActionSeqEnd
+    -> return (def, us, Nothing, nextFeedback def oldfb, sc)
+  Nothing
+    -> return (def, us, Nothing, oldfb {sfbMoreActions = True}, sc))
 
 gotTape :: SimplM Bool
 gotTape = SM (\_st_env us tape fb sc -> case tape of
@@ -194,8 +204,35 @@ tapeLeft = SM (\_st_env us tape fb sc -> case tape of
                        Just ActionSpec {} -> return (True, us, tape, fb, sc)
                        _                  -> return (False, us, tape, fb, sc))
 
-inIsolation :: SimplM a -> SimplM a
-inIsolation = undefined
+
+-- | Encountered a subproblem. If we have a subtape for it, use it, otherwise explore. Either way, incorporate the feedback. Design for this isn't done yet.
+type OutExpr = CoreExpr
+simplifyAsSubproblem :: SimplM (a, OutExpr) -> SimplM (a, OutExpr)
+simplifyAsSubproblem work
+  = SM (\_st_env us tape fb sc ->
+        do case tape of
+             Nothing -> do
+               -- With no tape, do not separate subproblems.
+               unSM work _st_env us tape fb sc
+             Just as -> do
+               let (subtape, tapeToContinue) = case as of
+                     -- Have instructions, get feedback.
+                     ActionSpec {asSubproblems = subtape:ts}
+                        -> (subtape, as {asSubproblems = ts})
+                     -- Just exploring the subproblem structure.
+                     ActionSeqEnd
+                        -> (ActionSeqEnd, ActionSeqEnd)
+                     _  -> error "Arrived at subproblem, missing a subtape."
+               ((env, expr), us1, _, subFeedback, subCounts) <- unSM work
+                       _st_env us
+                       (Just subtape)
+                       (InProgressSFeedback [] False Nothing)
+                       (zeroSimplCount $ st_flags _st_env)
+               let cfb = completeFeedback subCounts (exprSize expr) subFeedback
+                   ufb = fb { sfbSubproblemFeedbacks =
+                                cfb : sfbSubproblemFeedbacks fb}
+               unSM (return (env,expr)) _st_env us1 (Just tapeToContinue) ufb sc)
+
 
 data SimplifierFeedback
      = CompleteSFeedback { sfbSubproblemFeedbacks :: [SimplifierFeedback]
