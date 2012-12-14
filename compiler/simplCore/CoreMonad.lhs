@@ -528,9 +528,9 @@ zeroSimplCount dflags
 isZeroSimplCount (VerySimplCount n)    	    = n==0
 isZeroSimplCount (SimplCount { ticks = n }) = n==0
 
-computeScore :: SimplCount -> (Tick -> Float) -> Float
-computeScore (VerySimplCount _) _ = error "VerySimplCounts cannot answer detailed queries"
-computeScore (SimplCount {details = counts }) f
+computeScore :: (Tick -> Float) -> SimplCount -> Float
+computeScore _ (VerySimplCount _) = error "VerySimplCounts cannot answer detailed queries"
+computeScore f (SimplCount {details = counts })
   = sum $ map (\ (t,c) -> (fromIntegral c) * (f t) ) $ Map.toList counts
 
 hasDetailedCounts (VerySimplCount {}) = False
