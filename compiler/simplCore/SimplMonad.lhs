@@ -233,7 +233,9 @@ simplifyAsSubproblem work
                let cfb = completeFeedback subCounts (exprSize expr) subFeedback
                    ufb = fb { sfbSubproblemFeedbacks =
                                 cfb : sfbSubproblemFeedbacks fb}
-               unSM (return (env,expr)) _st_env us1 (Just tapeToContinue) ufb sc)
+               unSM (return (env,expr)) _st_env us1
+                    (Just tapeToContinue) ufb
+                    (plusSimplCount sc subCounts))
 
 
 data SimplifierFeedback
