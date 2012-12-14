@@ -189,8 +189,10 @@ consumeDecision def = SM (\_st_env us tape oldfb sc -> case tape of
     -> return (a, us, Just n, nextFeedback a oldfb, sc)
   Just ActionSpec {asAction = Nothing}
     -> error "We should not consume tape where before no actions were available."
+  -- When we rely on sources other than the tape to determine an action,
+  -- we only record that it was needed, so don't start a new feedback.
   Just ActionSeqEnd
-    -> return (def, us, Nothing, nextFeedback def oldfb, sc)
+    -> return (def, us, Nothing, oldfb {sfbMoreActions = True}, sc)
   Nothing
     -> return (def, us, Nothing, oldfb {sfbMoreActions = True}, sc))
 
@@ -217,8 +219,8 @@ simplifyAsSubproblem work
              Just as -> do
                let (subtape, tapeToContinue) = case as of
                      -- Have instructions, get feedback.
-                     ActionSpec {asSubproblems = subtape:ts}
-                        -> (subtape, as {asSubproblems = ts})
+                     ActionSpec {asSubproblems = nexttape:ts}
+                        -> (nexttape, as {asSubproblems = ts})
                      -- Just exploring the subproblem structure.
                      ActionSeqEnd
                         -> (ActionSeqEnd, ActionSeqEnd)

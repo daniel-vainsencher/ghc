@@ -631,7 +631,7 @@ completeBind :: SimplEnv
              -> TopLevelFlag            -- Flag stuck into unfolding
              -> InId                    -- Old binder
              -> OutId -> OutExpr        -- New binder and RHS
-             -> OutExpr                 -- Adapted but unsimplified RHS.
+             -> OutExpr                 -- Original RHS, but substituted to be an OutExpr
              -> SimplM SimplEnv
 -- completeBind may choose to do its work
 --      * by extending the substitution (e.g. let x = y in ...)
@@ -651,7 +651,7 @@ completeBind env top_lvl old_bndr new_bndr new_rhs adapted_old_rhs
 
         -- Do eta-expansion on the RHS of the binding
         -- See Note [Eta-expanding at let bindings] in SimplUtils
-      ; (_, final_rhs) <- tryEtaExpand env new_bndr new_rhs
+      ; (_final_arity, final_rhs) <- tryEtaExpand env new_bndr new_rhs
         -- Simplify the unfolding
       ; adapted_old_unfolding <- simplUnfolding env top_lvl old_bndr 
                                                 adapted_old_rhs old_unf
