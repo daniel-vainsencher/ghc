@@ -187,14 +187,9 @@ consumeDecision :: SearchTapeElement -> SimplM SearchTapeElement
 consumeDecision def = SM (\_st_env us tape oldfb sc -> case tape of
   Just ActionSpec {asAction = Just a, asNext = n}
     -> return (a, us, Just n, nextFeedback a oldfb, sc)
-  Just ActionSpec {asAction = Nothing}
-    -> error "We should not consume tape where before no actions were available."
   -- When we rely on sources other than the tape to determine an action,
   -- we only record that it was needed, so don't start a new feedback.
-  Just ActionSeqEnd
-    -> return (def, us, Nothing, oldfb {sfbMoreActions = True}, sc)
-  Nothing
-    -> return (def, us, Nothing, oldfb {sfbMoreActions = True}, sc))
+  _ -> return (def, us, Nothing, oldfb {sfbMoreActions = True}, sc))
 
 gotTape :: SimplM Bool
 gotTape = SM (\_st_env us tape fb sc -> case tape of
