@@ -38,7 +38,7 @@ import MonadUtils
 -- Just for the strangely concrete simplifyAsSubproblem.
 import CoreSyn          (CoreExpr)
 import CoreUtils        (exprSize)
-
+import Unique
 \end{code}
 
 %************************************************************************
@@ -204,10 +204,11 @@ tapeLeft = SM (\_st_env us tape fb sc -> case tape of
 
 -- | Encountered a subproblem. If we have a subtape for it, use it, otherwise explore. Either way, incorporate the feedback. Design for this isn't done yet.
 type OutExpr = CoreExpr
-simplifyAsSubproblem :: SimplM (a, OutExpr) -> SimplM (a, OutExpr)
-simplifyAsSubproblem work
+simplifyAsSubproblem :: Unique -> SimplM (a, OutExpr) -> SimplM (a, OutExpr)
+simplifyAsSubproblem name work
   = SM (\_st_env us tape fb sc ->
-        do case tape of
+        do let dflags = st_flags _st_env
+           case tape of
              Nothing -> do
                -- With no tape, do not separate subproblems.
                unSM work _st_env us tape fb sc
@@ -224,8 +225,10 @@ simplifyAsSubproblem work
                        _st_env us
                        (Just subtape)
                        (InProgressSFeedback [] False Nothing)
-                       (zeroSimplCount $ st_flags _st_env)
-               let cfb = completeFeedback subCounts (exprSize expr) subFeedback
+                       (zeroSimplCount dflags)
+               let cfb = completeFeedback (showSDoc dflags $ pprUnique name)
+                                          subCounts
+                                          (exprSize expr) subFeedback
                    ufb = fb { sfbSubproblemFeedbacks =
                                 cfb : sfbSubproblemFeedbacks fb}
                unSM (return (env,expr)) _st_env us1
@@ -234,11 +237,12 @@ simplifyAsSubproblem work
 
 
 data SimplifierFeedback
-     = CompleteSFeedback { sfbSubproblemFeedbacks :: [SimplifierFeedback]
+     = CompleteSFeedback { sfbSubproblemFeedbacks :: [SimplifierFeedback ]
                          , sfbSimplCounts :: SimplCount
                          , sfbExprSize :: Int
                          , sfbMoreActions :: Bool
-                         , sfbPrevious :: Maybe SimplifierFeedback}
+                         , sfbPrevious :: Maybe SimplifierFeedback
+                         , sfbMarker :: String}
        | InProgressSFeedback { sfbSubproblemFeedbacks :: [SimplifierFeedback]
                              , sfbMoreActions :: Bool
                              , sfbPrevious :: Maybe SimplifierFeedback}
@@ -260,8 +264,8 @@ nextFeedback action InProgressSFeedback
 nextFeedback _ _ = error "A feedback that is not in progress should never be closed."
 
 
-completeFeedback :: SimplCount -> Int -> SimplifierFeedback -> SimplifierFeedback
-completeFeedback counts exprSize InProgressSFeedback
+completeFeedback :: String -> SimplCount -> Int -> SimplifierFeedback -> SimplifierFeedback
+completeFeedback name counts exprSize InProgressSFeedback
                                { sfbSubproblemFeedbacks = subfb
                                , sfbMoreActions = more
                                , sfbPrevious = prev}
@@ -269,9 +273,10 @@ completeFeedback counts exprSize InProgressSFeedback
                       , sfbSimplCounts = counts
                       , sfbExprSize = exprSize
                       , sfbMoreActions = more
-                      , sfbPrevious = prev}
+                      , sfbPrevious = prev
+                      , sfbMarker = name}
 
-completeFeedback _ _ _ = error "A feedback that is not in progress should never be closed."
+completeFeedback _ _ _ _ = error "A feedback that is not in progress should never be closed."
 
 
 \end{code}

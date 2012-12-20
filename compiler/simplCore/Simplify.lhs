@@ -45,6 +45,7 @@ import FastString
 import Pair
 import Util
 import ErrUtils
+import Var
 \end{code}
 
 
@@ -342,7 +343,7 @@ simplLazyBind env top_lvl is_rec bndr bndr1 rhs rhs_se
         -- Simplify the RHS
         ; let   body_out_ty :: OutType
                 body_out_ty = substTy body_env (exprType body)
-        ; (body_env1, body1) <- simplifyAsSubproblem $ simplExprF body_env body (mkRhsStop body_out_ty)
+        ; (body_env1, body1) <- simplifyAsSubproblem (varUnique bndr1) $ simplExprF body_env body (mkRhsStop body_out_ty)
         -- ANF-ise a constructor or PAP rhs
         ; (body_env2, body2) <- prepareRhs top_lvl body_env1 bndr1 body1
 
