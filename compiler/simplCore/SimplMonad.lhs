@@ -221,8 +221,9 @@ simplifyAsSubproblem name work
                      ActionSeqEnd
                         -> (ActionSeqEnd, ActionSeqEnd)
                      _  -> error "Arrived at subproblem, missing a subtape."
-               ((env, expr), us1, _, subFeedback, subCounts) <- unSM work
-                       _st_env us
+               let (subUs, nextUs) = splitUniqSupply us
+               ((env, expr), _, _, subFeedback, subCounts) <- unSM work
+                       _st_env subUs
                        (Just subtape)
                        (InProgressSFeedback [] False Nothing)
                        (zeroSimplCount dflags)
@@ -231,7 +232,7 @@ simplifyAsSubproblem name work
                                           (exprSize expr) subFeedback
                    ufb = fb { sfbSubproblemFeedbacks =
                                 cfb : sfbSubproblemFeedbacks fb}
-               unSM (return (env,expr)) _st_env us1
+               unSM (return (env,expr)) _st_env nextUs
                     (Just tapeToContinue) ufb
                     (plusSimplCount sc subCounts))
 
