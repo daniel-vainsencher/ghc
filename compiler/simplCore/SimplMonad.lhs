@@ -208,26 +208,34 @@ simplifyAsSubproblem :: Unique -> SimplM (a, OutExpr) -> SimplM (a, OutExpr)
 simplifyAsSubproblem name work
   = SM (\_st_env us tape fb sc ->
         do let dflags = st_flags _st_env
+               -- Always split the uniq supply so that the supply for following
+               -- problems is independent of whether we have a tape for the 
+               -- current subproblem.
+               (subUs, nextUs) = splitUniqSupply us
+               nameAsString = showSDoc dflags $ pprUnique name
            case tape of
              Nothing -> do
                -- With no tape, do not separate subproblems.
-               unSM work _st_env us tape fb sc
+               unSM work _st_env nextUs tape fb sc
              Just as -> do
                let (subtape, tapeToContinue) = case as of
-                     -- Have instructions, get feedback.
-                     ActionSpec {asSubproblems = nexttape:ts}
+                     -- Have instructions, correctly named, get feedback.
+                     ActionSpec {asSubproblems = (nextname, nexttape):ts} 
+                         | nextname == nameAsString
                         -> (nexttape, as {asSubproblems = ts})
+                     -- Label mismatch.
+                         | otherwise
+                        -> error $ "Arrived at subproblem with name mismatch; expecting " ++ nameAsString ++ " but ActionSpec has " ++ nextname
                      -- Just exploring the subproblem structure.
-                     ActionSeqEnd
-                        -> (ActionSeqEnd, ActionSeqEnd)
-                     _  -> error "Arrived at subproblem, missing a subtape."
-               let (subUs, nextUs) = splitUniqSupply us
+                     ActionSeqEnd -> (ActionSeqEnd, ActionSeqEnd)
+                     as -> error $ "Arrived at subproblem "++ nameAsString ++ ", missing a subtape. ActionSpec: " ++ show as
+           
                ((env, expr), _, _, subFeedback, subCounts) <- unSM work
                        _st_env subUs
                        (Just subtape)
                        (InProgressSFeedback [] False Nothing)
                        (zeroSimplCount dflags)
-               let cfb = completeFeedback (showSDoc dflags $ pprUnique name)
+               let cfb = completeFeedback nameAsString
                                           subCounts
                                           (exprSize expr) subFeedback
                    ufb = fb { sfbSubproblemFeedbacks =

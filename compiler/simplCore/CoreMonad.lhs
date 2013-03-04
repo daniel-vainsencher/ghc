@@ -266,7 +266,7 @@ data CoreToDo           -- These are diff core-to-core passes,
 type SearchTapeElement = Bool
 type MTape = Maybe (ActionSpec SearchTapeElement)
 
-data ActionSpec a = ActionSpec { asSubproblems :: [ActionSpec a]
+data ActionSpec a = ActionSpec { asSubproblems :: [(String, ActionSpec a)]
                                , asAction :: Maybe a
                                , asNext   :: (ActionSpec a)}
                     | ActionSeqEnd deriving Show
